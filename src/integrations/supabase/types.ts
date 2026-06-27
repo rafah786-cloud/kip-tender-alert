@@ -14,7 +14,81 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      settings: {
+        Row: {
+          id: number
+          keywords: string[]
+          last_run_at: string | null
+          last_run_message: string | null
+          last_run_status: string | null
+          notify_email: string | null
+        }
+        Insert: {
+          id?: number
+          keywords?: string[]
+          last_run_at?: string | null
+          last_run_message?: string | null
+          last_run_status?: string | null
+          notify_email?: string | null
+        }
+        Update: {
+          id?: number
+          keywords?: string[]
+          last_run_at?: string | null
+          last_run_message?: string | null
+          last_run_status?: string | null
+          notify_email?: string | null
+        }
+        Relationships: []
+      }
+      tenders: {
+        Row: {
+          closing_at: string | null
+          created_at: string
+          fingerprint: string
+          id: string
+          matched_keywords: string[]
+          organisation: string | null
+          published_at: string | null
+          raw_excerpt: string | null
+          seen: boolean
+          source: string
+          source_url: string
+          tender_url: string | null
+          title: string
+        }
+        Insert: {
+          closing_at?: string | null
+          created_at?: string
+          fingerprint: string
+          id?: string
+          matched_keywords?: string[]
+          organisation?: string | null
+          published_at?: string | null
+          raw_excerpt?: string | null
+          seen?: boolean
+          source: string
+          source_url: string
+          tender_url?: string | null
+          title: string
+        }
+        Update: {
+          closing_at?: string | null
+          created_at?: string
+          fingerprint?: string
+          id?: string
+          matched_keywords?: string[]
+          organisation?: string | null
+          published_at?: string | null
+          raw_excerpt?: string | null
+          seen?: boolean
+          source?: string
+          source_url?: string
+          tender_url?: string | null
+          title?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

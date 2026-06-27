@@ -10,33 +10,44 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiPublicHooksCheckTendersRouteImport } from './routes/api/public/hooks/check-tenders'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicHooksCheckTendersRoute =
+  ApiPublicHooksCheckTendersRouteImport.update({
+    id: '/api/public/hooks/check-tenders',
+    path: '/api/public/hooks/check-tenders',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/public/hooks/check-tenders': typeof ApiPublicHooksCheckTendersRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/public/hooks/check-tenders': typeof ApiPublicHooksCheckTendersRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/public/hooks/check-tenders': typeof ApiPublicHooksCheckTendersRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/api/public/hooks/check-tenders'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/api/public/hooks/check-tenders'
+  id: '__root__' | '/' | '/api/public/hooks/check-tenders'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiPublicHooksCheckTendersRoute: typeof ApiPublicHooksCheckTendersRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,22 +59,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/check-tenders': {
+      id: '/api/public/hooks/check-tenders'
+      path: '/api/public/hooks/check-tenders'
+      fullPath: '/api/public/hooks/check-tenders'
+      preLoaderRoute: typeof ApiPublicHooksCheckTendersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiPublicHooksCheckTendersRoute: ApiPublicHooksCheckTendersRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

@@ -1,29 +1,440 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import {
+  Bell,
+  BellRing,
+  CheckCheck,
+  ExternalLink,
+  Loader2,
+  RefreshCw,
+  Search,
+  Settings as SettingsIcon,
+  X,
+} from "lucide-react";
+
+import {
+  getSettings,
+  listTenders,
+  markAllSeen,
+  markSeen,
+  runCheckNow,
+  updateKeywords,
+} from "@/lib/tenders.functions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Your App" },
-      { name: "description", content: "Replace this with a one-sentence description of your app." },
-      { property: "og:title", content: "Your App" },
-      { property: "og:description", content: "Replace this with a one-sentence description of your app." },
+      { title: "Tender Watch — Mattress & Bed supply tenders" },
+      {
+        name: "description",
+        content:
+          "Auto-monitors central & Kerala government e-procurement portals for mattress, bed and bedding supply tenders.",
+      },
+      { name: "robots", content: "noindex,nofollow" },
     ],
   }),
-  component: Index,
+  component: Dashboard,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
-function Index() {
+function relTime(iso: string | null | undefined): string {
+  if (!iso) return "never";
+  const d = new Date(iso).getTime();
+  const diff = Date.now() - d;
+  if (diff < 60_000) return "just now";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+function Dashboard() {
+  const qc = useQueryClient();
+  const router = useRouter();
+  const getSettingsFn = useServerFn(getSettings);
+  const listTendersFn = useServerFn(listTenders);
+  const runCheckFn = useServerFn(runCheckNow);
+  const markSeenFn = useServerFn(markSeen);
+  const markAllSeenFn = useServerFn(markAllSeen);
+  const updateKeywordsFn = useServerFn(updateKeywords);
+
+  const settingsQ = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
+  const tendersQ = useQuery({
+    queryKey: ["tenders"],
+    queryFn: () => listTendersFn(),
+    refetchInterval: 60_000,
+  });
+
+  const [showSettings, setShowSettings] = useState(false);
+  const [filter, setFilter] = useState<"all" | "new">("new");
+  const [search, setSearch] = useState("");
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>("default");
+
+  useEffect(() => {
+    if (typeof Notification !== "undefined") setNotifPermission(Notification.permission);
+  }, []);
+
+  // Notify on new unseen tenders since last render
+  const seenIdsRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!tendersQ.data) return;
+    const unseen = tendersQ.data.filter((t) => !t.seen);
+    if (seenIdsRef.current === null) {
+      seenIdsRef.current = new Set(tendersQ.data.map((t) => t.id));
+      return;
+    }
+    const fresh = unseen.filter((t) => !seenIdsRef.current!.has(t.id));
+    for (const f of fresh) {
+      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        new Notification("New tender match", { body: f.title.slice(0, 140), tag: f.id });
+      }
+    }
+    seenIdsRef.current = new Set(tendersQ.data.map((t) => t.id));
+  }, [tendersQ.data]);
+
+  const runMut = useMutation({
+    mutationFn: () => runCheckFn(),
+    onSuccess: (r) => {
+      toast.success(`${r.new_count} new · ${r.total_matches} total matches`);
+      qc.invalidateQueries({ queryKey: ["tenders"] });
+      qc.invalidateQueries({ queryKey: ["settings"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Check failed"),
+  });
+
+  const markMut = useMutation({
+    mutationFn: (v: { id: string; seen: boolean }) => markSeenFn({ data: v }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tenders"] }),
+  });
+
+  const markAllMut = useMutation({
+    mutationFn: () => markAllSeenFn(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tenders"] }),
+  });
+
+  const filtered = useMemo(() => {
+    const all = tendersQ.data ?? [];
+    return all
+      .filter((t) => (filter === "new" ? !t.seen : true))
+      .filter((t) =>
+        search.trim()
+          ? (t.title + " " + (t.organisation ?? "")).toLowerCase().includes(search.toLowerCase())
+          : true,
+      );
+  }, [tendersQ.data, filter, search]);
+
+  const newCount = (tendersQ.data ?? []).filter((t) => !t.seen).length;
+
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="sticky top-0 z-20 border-b border-border bg-background/85 backdrop-blur">
+        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <BellRing className="h-5 w-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h1 className="truncate text-base font-semibold leading-tight">Tender Watch</h1>
+            <p className="truncate text-xs text-muted-foreground">
+              Last check {relTime(settingsQ.data?.last_run_at)} · {newCount} new
+            </p>
+          </div>
+          {notifPermission !== "granted" && typeof Notification !== "undefined" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={async () => {
+                const p = await Notification.requestPermission();
+                setNotifPermission(p);
+                if (p === "granted") toast.success("Notifications enabled");
+              }}
+              title="Enable browser notifications"
+            >
+              <Bell className="h-4 w-4" />
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setShowSettings((s) => !s)}
+            aria-label="Settings"
+          >
+            <SettingsIcon className="h-4 w-4" />
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => runMut.mutate()}
+            disabled={runMut.isPending}
+            className="gap-1.5"
+          >
+            {runMut.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            Check
+          </Button>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-5xl px-4 py-4 space-y-4">
+        {showSettings && (
+          <SettingsPanel
+            keywords={settingsQ.data?.keywords ?? []}
+            lastMessage={settingsQ.data?.last_run_message ?? null}
+            lastStatus={settingsQ.data?.last_run_status ?? null}
+            onClose={() => setShowSettings(false)}
+            onSave={async (kws) => {
+              await updateKeywordsFn({ data: { keywords: kws } });
+              toast.success("Keywords saved");
+              qc.invalidateQueries({ queryKey: ["settings"] });
+              router.invalidate();
+            }}
+          />
+        )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-md border border-border p-0.5">
+            <button
+              onClick={() => setFilter("new")}
+              className={`rounded px-3 py-1 text-xs font-medium transition ${
+                filter === "new"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              New ({newCount})
+            </button>
+            <button
+              onClick={() => setFilter("all")}
+              className={`rounded px-3 py-1 text-xs font-medium transition ${
+                filter === "all"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              All ({tendersQ.data?.length ?? 0})
+            </button>
+          </div>
+          <div className="relative flex-1 min-w-[180px]">
+            <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Filter results"
+              className="h-9 pl-8"
+            />
+          </div>
+          {newCount > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => markAllMut.mutate()}
+              disabled={markAllMut.isPending}
+              className="gap-1.5"
+            >
+              <CheckCheck className="h-4 w-4" />
+              Mark all read
+            </Button>
+          )}
+        </div>
+
+        {tendersQ.isLoading ? (
+          <div className="flex items-center justify-center py-16 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <EmptyState onCheck={() => runMut.mutate()} loading={runMut.isPending} />
+        ) : (
+          <div className="space-y-2">
+            {filtered.map((t) => (
+              <Card
+                key={t.id}
+                className={`group p-4 transition ${
+                  t.seen ? "opacity-70" : "border-primary/40"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {!t.seen && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-label="new" />
+                      )}
+                      <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">
+                        {t.source === "cppp"
+                          ? "CPPP"
+                          : t.source === "etenders_central"
+                            ? "eTenders India"
+                            : "Kerala"}
+                      </Badge>
+                      {t.matched_keywords.map((k) => (
+                        <Badge key={k} className="text-[10px]" variant="outline">
+                          {k}
+                        </Badge>
+                      ))}
+                    </div>
+                    <h3 className="text-sm font-semibold leading-snug">{t.title}</h3>
+                    {t.organisation && (
+                      <p className="text-xs text-muted-foreground">{t.organisation}</p>
+                    )}
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      {t.published_at && <span>Published: {t.published_at}</span>}
+                      {t.closing_at && <span>Closes: {t.closing_at}</span>}
+                      <span>Found {relTime(t.created_at)}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <a
+                      href={t.tender_url ?? t.source_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 rounded-md bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground hover:bg-secondary/80"
+                    >
+                      Open <ExternalLink className="h-3 w-3" />
+                    </a>
+                    <button
+                      onClick={() => markMut.mutate({ id: t.id, seen: !t.seen })}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      {t.seen ? "Mark unread" : "Mark read"}
+                    </button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        <p className="pt-4 text-center text-[11px] text-muted-foreground">
+          Auto-checks every 2 hours. Keep this tab open to receive browser notifications.
+        </p>
+      </main>
     </div>
+  );
+}
+
+function SettingsPanel({
+  keywords,
+  lastMessage,
+  lastStatus,
+  onClose,
+  onSave,
+}: {
+  keywords: string[];
+  lastMessage: string | null;
+  lastStatus: string | null;
+  onClose: () => void;
+  onSave: (kws: string[]) => Promise<void>;
+}) {
+  const [list, setList] = useState<string[]>(keywords);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => setList(keywords), [keywords]);
+
+  const add = () => {
+    const v = draft.trim();
+    if (!v) return;
+    if (!list.includes(v)) setList([...list, v]);
+    setDraft("");
+  };
+
+  return (
+    <Card className="p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold">Keywords</h2>
+        <button onClick={onClose} aria-label="Close" className="text-muted-foreground">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        A tender is captured if its title or row contains any of these (case-insensitive, word-level).
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {list.map((k) => (
+          <span
+            key={k}
+            className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs text-secondary-foreground"
+          >
+            {k}
+            <button onClick={() => setList(list.filter((x) => x !== k))} aria-label={`Remove ${k}`}>
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <Input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              add();
+            }
+          }}
+          placeholder="Add a keyword and press Enter"
+          className="h-9"
+        />
+        <Button size="sm" variant="secondary" onClick={add}>
+          Add
+        </Button>
+      </div>
+      {lastMessage && (
+        <div
+          className={`rounded-md border p-2.5 text-xs ${
+            lastStatus === "error"
+              ? "border-destructive/40 bg-destructive/10 text-destructive"
+              : "border-border bg-muted/40 text-muted-foreground"
+          }`}
+        >
+          {lastMessage}
+        </div>
+      )}
+      <div className="flex justify-end gap-2">
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          disabled={saving}
+          onClick={async () => {
+            setSaving(true);
+            try {
+              await onSave(list);
+              onClose();
+            } finally {
+              setSaving(false);
+            }
+          }}
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function EmptyState({ onCheck, loading }: { onCheck: () => void; loading: boolean }) {
+  return (
+    <Card className="p-10 text-center space-y-3">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
+        <Search className="h-5 w-5" />
+      </div>
+      <h2 className="text-sm font-semibold">No matches yet</h2>
+      <p className="mx-auto max-w-sm text-xs text-muted-foreground">
+        Tap Check to scan eprocure.gov.in, etenders.gov.in and etenders.kerala.gov.in right now.
+        Otherwise it runs every 2 hours automatically.
+      </p>
+      <Button size="sm" onClick={onCheck} disabled={loading} className="gap-1.5">
+        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+        Check now
+      </Button>
+    </Card>
   );
 }
