@@ -65,7 +65,7 @@ function Dashboard() {
   const runCheckFn = useServerFn(runCheckNow);
   const markSeenFn = useServerFn(markSeen);
   const markAllSeenFn = useServerFn(markAllSeen);
-  const updateKeywordsFn = useServerFn(updateKeywords);
+  const updateMatchSettingsFn = useServerFn(updateMatchSettings);
   const updateNotifyEmailFn = useServerFn(updateNotifyEmail);
 
   const settingsQ = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
