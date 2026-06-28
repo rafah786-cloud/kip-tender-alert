@@ -239,7 +239,7 @@ function parseListing(
   return out;
 }
 
-export async function scrapeAllSources(keywords: string[]): Promise<{
+export async function scrapeAllSources(opts: MatchOptions): Promise<{
   results: { source: TenderSource; matches: ParsedTender[]; error?: string }[];
 }> {
   const results: { source: TenderSource; matches: ParsedTender[]; error?: string }[] = [];
@@ -249,8 +249,9 @@ export async function scrapeAllSources(keywords: string[]): Promise<{
       results.push({ source, matches: [], error: scraped.error });
       continue;
     }
-    const matches = parseListing(source, scraped.markdown, keywords);
+    const matches = parseListing(source, scraped.markdown, opts);
     results.push({ source, matches });
   }
   return { results };
 }
+
