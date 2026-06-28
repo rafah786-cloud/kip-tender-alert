@@ -150,7 +150,7 @@ function findKeywordMatches(text: string, opts: MatchOptions): string[] {
 function parseListing(
   source: TenderSource,
   markdown: string,
-  keywords: string[],
+  opts: MatchOptions,
 ): ParsedTender[] {
   if (!markdown) return [];
   // Break into table rows + paragraphs.
@@ -184,8 +184,9 @@ function parseListing(
 
   for (const row of rows) {
     if (row.length < 20) continue;
-    const matches = findKeywordMatches(row, keywords);
+    const matches = findKeywordMatches(row, opts);
     if (matches.length === 0) continue;
+
 
     // Try to extract a link from markdown [text](url)
     const linkMatch = row.match(/\[([^\]]+)\]\((https?:[^)]+)\)/);
