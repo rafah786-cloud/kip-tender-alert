@@ -37,18 +37,16 @@ interface ScrapeErr {
 }
 
 async function firecrawlScrape(url: string): Promise<ScrapeOk | ScrapeErr> {
-  const lovableKey = process.env.LOVABLE_API_KEY;
   const fcKey = process.env.FIRECRAWL_API_KEY;
-  if (!lovableKey || !fcKey) {
-    return { ok: false, error: "Missing LOVABLE_API_KEY or FIRECRAWL_API_KEY" };
+  if (!fcKey) {
+    return { ok: false, error: "Missing FIRECRAWL_API_KEY" };
   }
   try {
-    const res = await fetch(`${FIRECRAWL_GATEWAY}/v2/scrape`, {
+    const res = await fetch(`https://api.firecrawl.dev/v2/scrape`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${lovableKey}`,
-        "X-Connection-Api-Key": fcKey,
+        Authorization: `Bearer ${fcKey}`,
       },
       body: JSON.stringify({
         url,
