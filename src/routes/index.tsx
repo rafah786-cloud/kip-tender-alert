@@ -188,6 +188,8 @@ function Dashboard() {
         {showSettings && (
           <SettingsPanel
             keywords={settingsQ.data?.keywords ?? []}
+            notifyEmail={settingsQ.data?.notify_email ?? null}
+            emailSuppressed={settingsQ.data?.email_suppressed ?? false}
             lastMessage={settingsQ.data?.last_run_message ?? null}
             lastStatus={settingsQ.data?.last_run_status ?? null}
             onClose={() => setShowSettings(false)}
@@ -197,8 +199,14 @@ function Dashboard() {
               qc.invalidateQueries({ queryKey: ["settings"] });
               router.invalidate();
             }}
+            onSaveEmail={async (email) => {
+              await updateNotifyEmailFn({ data: { email } });
+              toast.success(email ? "Email alerts enabled" : "Email alerts disabled");
+              qc.invalidateQueries({ queryKey: ["settings"] });
+            }}
           />
         )}
+
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex rounded-md border border-border p-0.5">
