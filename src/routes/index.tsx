@@ -22,6 +22,7 @@ import {
   markSeen,
   runCheckNow,
   updateKeywords,
+  updateNotifyEmail,
 } from "@/lib/tenders.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
