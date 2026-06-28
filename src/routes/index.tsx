@@ -190,14 +190,18 @@ function Dashboard() {
         {showSettings && (
           <SettingsPanel
             keywords={settingsQ.data?.keywords ?? []}
+            excludeKeywords={settingsQ.data?.exclude_keywords ?? []}
+            matchMode={settingsQ.data?.match_mode ?? "any"}
             notifyEmail={settingsQ.data?.notify_email ?? null}
             emailSuppressed={settingsQ.data?.email_suppressed ?? false}
             lastMessage={settingsQ.data?.last_run_message ?? null}
             lastStatus={settingsQ.data?.last_run_status ?? null}
             onClose={() => setShowSettings(false)}
-            onSave={async (kws) => {
-              await updateKeywordsFn({ data: { keywords: kws } });
-              toast.success("Keywords saved");
+            onSave={async (kws, ex, mode) => {
+              await updateMatchSettingsFn({
+                data: { keywords: kws, exclude_keywords: ex, match_mode: mode },
+              });
+              toast.success("Match settings saved");
               qc.invalidateQueries({ queryKey: ["settings"] });
               router.invalidate();
             }}
@@ -208,6 +212,7 @@ function Dashboard() {
             }}
           />
         )}
+
 
 
         <div className="flex flex-wrap items-center gap-2">
