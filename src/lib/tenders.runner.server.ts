@@ -1,8 +1,8 @@
 // Server-only orchestration: scrape sources, dedupe, insert new tenders, update settings.
+import { createClient } from "@supabase/supabase-js";
 import { scrapeAllSources } from "./tenders.server";
 
 function getServerClient() {
-  const { createClient } = require("@supabase/supabase-js") as typeof import("@supabase/supabase-js");
   return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
