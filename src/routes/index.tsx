@@ -22,6 +22,7 @@ import {
   markSeen,
   runCheckNow,
   updateKeywords,
+  updateNotifyEmail,
 } from "@/lib/tenders.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,6 +64,7 @@ function Dashboard() {
   const markSeenFn = useServerFn(markSeen);
   const markAllSeenFn = useServerFn(markAllSeen);
   const updateKeywordsFn = useServerFn(updateKeywords);
+  const updateNotifyEmailFn = useServerFn(updateNotifyEmail);
 
   const settingsQ = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
   const tendersQ = useQuery({
@@ -186,6 +188,8 @@ function Dashboard() {
         {showSettings && (
           <SettingsPanel
             keywords={settingsQ.data?.keywords ?? []}
+            notifyEmail={settingsQ.data?.notify_email ?? null}
+            emailSuppressed={settingsQ.data?.email_suppressed ?? false}
             lastMessage={settingsQ.data?.last_run_message ?? null}
             lastStatus={settingsQ.data?.last_run_status ?? null}
             onClose={() => setShowSettings(false)}
@@ -195,8 +199,14 @@ function Dashboard() {
               qc.invalidateQueries({ queryKey: ["settings"] });
               router.invalidate();
             }}
+            onSaveEmail={async (email) => {
+              await updateNotifyEmailFn({ data: { email } });
+              toast.success(email ? "Email alerts enabled" : "Email alerts disabled");
+              qc.invalidateQueries({ queryKey: ["settings"] });
+            }}
           />
         )}
+
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex rounded-md border border-border p-0.5">
@@ -320,22 +330,31 @@ function Dashboard() {
 
 function SettingsPanel({
   keywords,
+  notifyEmail,
+  emailSuppressed,
   lastMessage,
   lastStatus,
   onClose,
   onSave,
+  onSaveEmail,
 }: {
   keywords: string[];
+  notifyEmail: string | null;
+  emailSuppressed: boolean;
   lastMessage: string | null;
   lastStatus: string | null;
   onClose: () => void;
   onSave: (kws: string[]) => Promise<void>;
+  onSaveEmail: (email: string | null) => Promise<void>;
 }) {
   const [list, setList] = useState<string[]>(keywords);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [emailDraft, setEmailDraft] = useState<string>(notifyEmail ?? "");
+  const [savingEmail, setSavingEmail] = useState(false);
 
   useEffect(() => setList(keywords), [keywords]);
+  useEffect(() => setEmailDraft(notifyEmail ?? ""), [notifyEmail]);
 
   const add = () => {
     const v = draft.trim();
@@ -345,46 +364,113 @@ function SettingsPanel({
   };
 
   return (
-    <Card className="p-4 space-y-4">
+    <Card className="p-4 space-y-5">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">Keywords</h2>
+        <h2 className="text-sm font-semibold">Settings</h2>
         <button onClick={onClose} aria-label="Close" className="text-muted-foreground">
           <X className="h-4 w-4" />
         </button>
       </div>
-      <p className="text-xs text-muted-foreground">
-        A tender is captured if its title or row contains any of these (case-insensitive, word-level).
-      </p>
-      <div className="flex flex-wrap gap-1.5">
-        {list.map((k) => (
-          <span
-            key={k}
-            className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs text-secondary-foreground"
+
+      <section className="space-y-3">
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Email alerts
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Get an instant email when new matching tenders are found. Leave blank to disable.
+          </p>
+        </div>
+        {emailSuppressed && notifyEmail && (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-300">
+            This address previously unsubscribed. Saving again will re-enable alerts.
+          </div>
+        )}
+        <div className="flex gap-2">
+          <Input
+            type="email"
+            value={emailDraft}
+            onChange={(e) => setEmailDraft(e.target.value)}
+            placeholder="you@example.com"
+            className="h-9"
+          />
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={savingEmail}
+            onClick={async () => {
+              setSavingEmail(true);
+              try {
+                await onSaveEmail(emailDraft.trim() || null);
+              } finally {
+                setSavingEmail(false);
+              }
+            }}
           >
-            {k}
-            <button onClick={() => setList(list.filter((x) => x !== k))} aria-label={`Remove ${k}`}>
-              <X className="h-3 w-3" />
-            </button>
-          </span>
-        ))}
-      </div>
-      <div className="flex gap-2">
-        <Input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              add();
-            }
-          }}
-          placeholder="Add a keyword and press Enter"
-          className="h-9"
-        />
-        <Button size="sm" variant="secondary" onClick={add}>
-          Add
-        </Button>
-      </div>
+            {savingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+          </Button>
+          {notifyEmail && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={savingEmail}
+              onClick={async () => {
+                setSavingEmail(true);
+                try {
+                  await onSaveEmail(null);
+                  setEmailDraft("");
+                } finally {
+                  setSavingEmail(false);
+                }
+              }}
+            >
+              Off
+            </Button>
+          )}
+        </div>
+      </section>
+
+      <section className="space-y-3 border-t border-border pt-4">
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Keywords
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            A tender is captured if its title or row contains any of these (case-insensitive).
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {list.map((k) => (
+            <span
+              key={k}
+              className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs text-secondary-foreground"
+            >
+              {k}
+              <button onClick={() => setList(list.filter((x) => x !== k))} aria-label={`Remove ${k}`}>
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <Input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                add();
+              }
+            }}
+            placeholder="Add a keyword and press Enter"
+            className="h-9"
+          />
+          <Button size="sm" variant="secondary" onClick={add}>
+            Add
+          </Button>
+        </div>
+      </section>
+
       {lastMessage && (
         <div
           className={`rounded-md border p-2.5 text-xs ${
@@ -398,7 +484,7 @@ function SettingsPanel({
       )}
       <div className="flex justify-end gap-2">
         <Button variant="ghost" size="sm" onClick={onClose}>
-          Cancel
+          Close
         </Button>
         <Button
           size="sm"
@@ -413,12 +499,13 @@ function SettingsPanel({
             }
           }}
         >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save keywords"}
         </Button>
       </div>
     </Card>
   );
 }
+
 
 function EmptyState({ onCheck, loading }: { onCheck: () => void; loading: boolean }) {
   return (
