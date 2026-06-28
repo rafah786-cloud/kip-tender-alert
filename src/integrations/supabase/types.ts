@@ -103,27 +103,33 @@ export type Database = {
       }
       settings: {
         Row: {
+          exclude_keywords: Json
           id: number
           keywords: string[]
           last_run_at: string | null
           last_run_message: string | null
           last_run_status: string | null
+          match_mode: string
           notify_email: string | null
         }
         Insert: {
+          exclude_keywords?: Json
           id?: number
           keywords?: string[]
           last_run_at?: string | null
           last_run_message?: string | null
           last_run_status?: string | null
+          match_mode?: string
           notify_email?: string | null
         }
         Update: {
+          exclude_keywords?: Json
           id?: number
           keywords?: string[]
           last_run_at?: string | null
           last_run_message?: string | null
           last_run_status?: string | null
+          match_mode?: string
           notify_email?: string | null
         }
         Relationships: []

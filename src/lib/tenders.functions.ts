@@ -15,8 +15,12 @@ export interface TenderRow {
   created_at: string;
 }
 
+export type MatchMode = "any" | "all" | "phrase";
+
 export interface Settings {
   keywords: string[];
+  exclude_keywords: string[];
+  match_mode: MatchMode;
   last_run_at: string | null;
   last_run_status: string | null;
   last_run_message: string | null;
@@ -25,8 +29,6 @@ export interface Settings {
 }
 
 function getServerClient() {
-  // Service-role client is only used here for writes; this app is unauthenticated by design.
-  // Loaded lazily so the secret isn't read at module scope on the client bundle.
   const { createClient } = require("@supabase/supabase-js") as typeof import("@supabase/supabase-js");
   return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -47,8 +49,11 @@ export const getSettings = createServerFn({ method: "GET" }).handler(async () =>
       .maybeSingle();
     emailSuppressed = !!sup;
   }
+  const mode = ((data.match_mode as string) ?? "any") as MatchMode;
   return {
-    keywords: data.keywords as string[],
+    keywords: (data.keywords as string[]) ?? [],
+    exclude_keywords: (data.exclude_keywords as string[]) ?? [],
+    match_mode: mode,
     last_run_at: data.last_run_at as string | null,
     last_run_status: data.last_run_status as string | null,
     last_run_message: data.last_run_message as string | null,
@@ -57,18 +62,49 @@ export const getSettings = createServerFn({ method: "GET" }).handler(async () =>
   } satisfies Settings;
 });
 
+function cleanList(arr: string[]): string[] {
+  return Array.from(
+    new Set(
+      arr
+        .map((k) => k.trim())
+        .filter((k) => k.length > 0 && k.length <= 80),
+    ),
+  ).slice(0, 50);
+}
+
+export const updateMatchSettings = createServerFn({ method: "POST" })
+  .inputValidator(
+    (d: { keywords?: string[]; exclude_keywords?: string[]; match_mode?: MatchMode }) => d,
+  )
+  .handler(async ({ data }) => {
+    const sb = getServerClient();
+    const patch: Record<string, unknown> = {};
+    if (Array.isArray(data.keywords)) patch.keywords = cleanList(data.keywords);
+    if (Array.isArray(data.exclude_keywords))
+      patch.exclude_keywords = cleanList(data.exclude_keywords);
+    if (data.match_mode) {
+      if (!["any", "all", "phrase"].includes(data.match_mode)) {
+        throw new Error("Invalid match mode");
+      }
+      patch.match_mode = data.match_mode;
+    }
+    if (Object.keys(patch).length === 0) return { ok: true };
+    const { error } = await sb.from("settings").update(patch).eq("id", 1);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+// Back-compat alias for existing call sites.
 export const updateKeywords = createServerFn({ method: "POST" })
   .inputValidator((d: { keywords: string[] }) => d)
   .handler(async ({ data }) => {
     const sb = getServerClient();
-    const cleaned = data.keywords
-      .map((k) => k.trim())
-      .filter((k) => k.length > 0)
-      .slice(0, 50);
+    const cleaned = cleanList(data.keywords);
     const { error } = await sb.from("settings").update({ keywords: cleaned }).eq("id", 1);
     if (error) throw new Error(error.message);
     return { ok: true, keywords: cleaned };
   });
+
 
 export const updateNotifyEmail = createServerFn({ method: "POST" })
   .inputValidator((d: { email: string | null }) => d)

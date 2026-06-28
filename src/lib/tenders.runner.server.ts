@@ -20,13 +20,15 @@ export async function runTenderCheck(): Promise<RunResult> {
   const sb = getServerClient();
   const { data: settings, error: sErr } = await sb
     .from("settings")
-    .select("keywords, notify_email")
+    .select("keywords, exclude_keywords, match_mode, notify_email")
     .eq("id", 1)
     .single();
   if (sErr) throw new Error(sErr.message);
-  const keywords = (settings?.keywords as string[]) ?? [];
+  const include = (settings?.keywords as string[]) ?? [];
+  const exclude = (settings?.exclude_keywords as string[]) ?? [];
+  const mode = ((settings?.match_mode as string) ?? "any") as "any" | "all" | "phrase";
   const notifyEmail = (settings?.notify_email as string | null) ?? null;
-  if (keywords.length === 0) {
+  if (include.length === 0) {
     await sb
       .from("settings")
       .update({
@@ -44,7 +46,8 @@ export async function runTenderCheck(): Promise<RunResult> {
     };
   }
 
-  const { results } = await scrapeAllSources(keywords);
+  const { results } = await scrapeAllSources({ include, exclude, mode });
+
 
   let total = 0;
   let inserted = 0;

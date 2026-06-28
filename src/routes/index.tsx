@@ -21,9 +21,11 @@ import {
   markAllSeen,
   markSeen,
   runCheckNow,
-  updateKeywords,
+  updateMatchSettings,
   updateNotifyEmail,
+  type MatchMode,
 } from "@/lib/tenders.functions";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -63,7 +65,7 @@ function Dashboard() {
   const runCheckFn = useServerFn(runCheckNow);
   const markSeenFn = useServerFn(markSeen);
   const markAllSeenFn = useServerFn(markAllSeen);
-  const updateKeywordsFn = useServerFn(updateKeywords);
+  const updateMatchSettingsFn = useServerFn(updateMatchSettings);
   const updateNotifyEmailFn = useServerFn(updateNotifyEmail);
 
   const settingsQ = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
@@ -188,14 +190,18 @@ function Dashboard() {
         {showSettings && (
           <SettingsPanel
             keywords={settingsQ.data?.keywords ?? []}
+            excludeKeywords={settingsQ.data?.exclude_keywords ?? []}
+            matchMode={settingsQ.data?.match_mode ?? "any"}
             notifyEmail={settingsQ.data?.notify_email ?? null}
             emailSuppressed={settingsQ.data?.email_suppressed ?? false}
             lastMessage={settingsQ.data?.last_run_message ?? null}
             lastStatus={settingsQ.data?.last_run_status ?? null}
             onClose={() => setShowSettings(false)}
-            onSave={async (kws) => {
-              await updateKeywordsFn({ data: { keywords: kws } });
-              toast.success("Keywords saved");
+            onSave={async (kws, ex, mode) => {
+              await updateMatchSettingsFn({
+                data: { keywords: kws, exclude_keywords: ex, match_mode: mode },
+              });
+              toast.success("Match settings saved");
               qc.invalidateQueries({ queryKey: ["settings"] });
               router.invalidate();
             }}
@@ -206,6 +212,7 @@ function Dashboard() {
             }}
           />
         )}
+
 
 
         <div className="flex flex-wrap items-center gap-2">
@@ -328,8 +335,83 @@ function Dashboard() {
   );
 }
 
+function KeywordEditor({
+  label,
+  helper,
+  list,
+  onChange,
+  placeholder,
+  tone = "default",
+}: {
+  label: string;
+  helper: string;
+  list: string[];
+  onChange: (next: string[]) => void;
+  placeholder: string;
+  tone?: "default" | "danger";
+}) {
+  const [draft, setDraft] = useState("");
+  const add = () => {
+    const v = draft.trim();
+    if (!v) return;
+    if (!list.some((k) => k.toLowerCase() === v.toLowerCase())) onChange([...list, v]);
+    setDraft("");
+  };
+  const chipClass =
+    tone === "danger"
+      ? "bg-destructive/10 text-destructive border border-destructive/30"
+      : "bg-secondary text-secondary-foreground";
+  return (
+    <div className="space-y-2">
+      <div>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {label}
+        </h3>
+        <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
+      </div>
+      {list.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {list.map((k) => (
+            <span
+              key={k}
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs ${chipClass}`}
+            >
+              {k}
+              <button
+                onClick={() => onChange(list.filter((x) => x !== k))}
+                aria-label={`Remove ${k}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <Input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              add();
+            }
+          }}
+          placeholder={placeholder}
+          className="h-9"
+        />
+        <Button size="sm" variant="secondary" onClick={add}>
+          Add
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function SettingsPanel({
   keywords,
+  excludeKeywords,
+  matchMode,
   notifyEmail,
   emailSuppressed,
   lastMessage,
@@ -339,29 +421,34 @@ function SettingsPanel({
   onSaveEmail,
 }: {
   keywords: string[];
+  excludeKeywords: string[];
+  matchMode: MatchMode;
   notifyEmail: string | null;
   emailSuppressed: boolean;
   lastMessage: string | null;
   lastStatus: string | null;
   onClose: () => void;
-  onSave: (kws: string[]) => Promise<void>;
+  onSave: (kws: string[], exclude: string[], mode: MatchMode) => Promise<void>;
   onSaveEmail: (email: string | null) => Promise<void>;
 }) {
   const [list, setList] = useState<string[]>(keywords);
-  const [draft, setDraft] = useState("");
+  const [exList, setExList] = useState<string[]>(excludeKeywords);
+  const [mode, setMode] = useState<MatchMode>(matchMode);
   const [saving, setSaving] = useState(false);
   const [emailDraft, setEmailDraft] = useState<string>(notifyEmail ?? "");
   const [savingEmail, setSavingEmail] = useState(false);
 
   useEffect(() => setList(keywords), [keywords]);
+  useEffect(() => setExList(excludeKeywords), [excludeKeywords]);
+  useEffect(() => setMode(matchMode), [matchMode]);
   useEffect(() => setEmailDraft(notifyEmail ?? ""), [notifyEmail]);
 
-  const add = () => {
-    const v = draft.trim();
-    if (!v) return;
-    if (!list.includes(v)) setList([...list, v]);
-    setDraft("");
-  };
+  const modes: { value: MatchMode; label: string; hint: string }[] = [
+    { value: "any", label: "Any word", hint: "Match if any include keyword appears (word match)." },
+    { value: "all", label: "All words", hint: "Match only if every include keyword appears." },
+    { value: "phrase", label: "Exact phrase", hint: "Match the keyword as a literal substring." },
+  ];
+  const activeMode = modes.find((m) => m.value === mode) ?? modes[0];
 
   return (
     <Card className="p-4 space-y-5">
@@ -433,42 +520,47 @@ function SettingsPanel({
       <section className="space-y-3 border-t border-border pt-4">
         <div>
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Keywords
+            Match mode
           </h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            A tender is captured if its title or row contains any of these (case-insensitive).
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground">{activeMode.hint}</p>
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {list.map((k) => (
-            <span
-              key={k}
-              className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs text-secondary-foreground"
+        <div className="flex rounded-md border border-border p-0.5">
+          {modes.map((m) => (
+            <button
+              key={m.value}
+              type="button"
+              onClick={() => setMode(m.value)}
+              className={`flex-1 rounded px-3 py-1.5 text-xs font-medium transition ${
+                mode === m.value
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
             >
-              {k}
-              <button onClick={() => setList(list.filter((x) => x !== k))} aria-label={`Remove ${k}`}>
-                <X className="h-3 w-3" />
-              </button>
-            </span>
+              {m.label}
+            </button>
           ))}
         </div>
-        <div className="flex gap-2">
-          <Input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                add();
-              }
-            }}
-            placeholder="Add a keyword and press Enter"
-            className="h-9"
-          />
-          <Button size="sm" variant="secondary" onClick={add}>
-            Add
-          </Button>
-        </div>
+      </section>
+
+      <section className="space-y-3 border-t border-border pt-4">
+        <KeywordEditor
+          label="Include keywords"
+          helper="Tenders mentioning these are captured (case-insensitive)."
+          list={list}
+          onChange={setList}
+          placeholder="e.g. mattress, coir mattress"
+        />
+      </section>
+
+      <section className="space-y-3 border-t border-border pt-4">
+        <KeywordEditor
+          label="Exclude keywords"
+          helper="Drop any tender whose row contains one of these (e.g. spring water, hospital bed)."
+          list={exList}
+          onChange={setExList}
+          placeholder="e.g. spring water, water bed"
+          tone="danger"
+        />
       </section>
 
       {lastMessage && (
@@ -492,19 +584,20 @@ function SettingsPanel({
           onClick={async () => {
             setSaving(true);
             try {
-              await onSave(list);
+              await onSave(list, exList, mode);
               onClose();
             } finally {
               setSaving(false);
             }
           }}
         >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save keywords"}
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save match settings"}
         </Button>
       </div>
     </Card>
   );
 }
+
 
 
 function EmptyState({ onCheck, loading }: { onCheck: () => void; loading: boolean }) {

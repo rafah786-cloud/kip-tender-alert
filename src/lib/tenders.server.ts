@@ -92,18 +92,54 @@ function sha1(input: string): string {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
 }
 
-function findKeywordMatches(text: string, keywords: string[]): string[] {
-  const lower = text.toLowerCase();
-  const hits = new Set<string>();
-  for (const kw of keywords) {
-    const k = kw.trim().toLowerCase();
-    if (!k) continue;
-    // word-boundary-ish match
-    const re = new RegExp(`(^|[^a-z0-9])${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`, "i");
-    if (re.test(lower)) hits.add(kw);
-  }
-  return [...hits];
+export type MatchMode = "any" | "all" | "phrase";
+
+export interface MatchOptions {
+  include: string[];
+  exclude: string[];
+  mode: MatchMode;
 }
+
+function escapeRe(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function termHits(text: string, term: string, mode: MatchMode): boolean {
+  const t = term.trim().toLowerCase();
+  if (!t) return false;
+  if (mode === "phrase") {
+    // exact substring (case-insensitive); multi-word allowed
+    return text.includes(t);
+  }
+  // word-boundary-ish for 'any' and 'all'
+  const re = new RegExp(`(^|[^a-z0-9])${escapeRe(t)}([^a-z0-9]|$)`, "i");
+  return re.test(text);
+}
+
+function findKeywordMatches(text: string, opts: MatchOptions): string[] {
+  const lower = text.toLowerCase();
+
+  // Exclusions always use word-boundary match; any hit disqualifies the row.
+  for (const ex of opts.exclude) {
+    const e = ex.trim().toLowerCase();
+    if (!e) continue;
+    const re = new RegExp(`(^|[^a-z0-9])${escapeRe(e)}([^a-z0-9]|$)`, "i");
+    if (re.test(lower)) return [];
+  }
+
+  const hits: string[] = [];
+  for (const kw of opts.include) {
+    if (termHits(lower, kw, opts.mode)) hits.push(kw);
+  }
+  if (hits.length === 0) return [];
+  if (opts.mode === "all") {
+    // every non-empty include term must hit
+    const required = opts.include.filter((k) => k.trim().length > 0);
+    if (hits.length < required.length) return [];
+  }
+  return [...new Set(hits)];
+}
+
 
 /**
  * Parse a markdown blob from a tender listing page into candidate rows.
@@ -114,7 +150,7 @@ function findKeywordMatches(text: string, keywords: string[]): string[] {
 function parseListing(
   source: TenderSource,
   markdown: string,
-  keywords: string[],
+  opts: MatchOptions,
 ): ParsedTender[] {
   if (!markdown) return [];
   // Break into table rows + paragraphs.
@@ -148,8 +184,9 @@ function parseListing(
 
   for (const row of rows) {
     if (row.length < 20) continue;
-    const matches = findKeywordMatches(row, keywords);
+    const matches = findKeywordMatches(row, opts);
     if (matches.length === 0) continue;
+
 
     // Try to extract a link from markdown [text](url)
     const linkMatch = row.match(/\[([^\]]+)\]\((https?:[^)]+)\)/);
@@ -202,7 +239,7 @@ function parseListing(
   return out;
 }
 
-export async function scrapeAllSources(keywords: string[]): Promise<{
+export async function scrapeAllSources(opts: MatchOptions): Promise<{
   results: { source: TenderSource; matches: ParsedTender[]; error?: string }[];
 }> {
   const results: { source: TenderSource; matches: ParsedTender[]; error?: string }[] = [];
@@ -212,8 +249,9 @@ export async function scrapeAllSources(keywords: string[]): Promise<{
       results.push({ source, matches: [], error: scraped.error });
       continue;
     }
-    const matches = parseListing(source, scraped.markdown, keywords);
+    const matches = parseListing(source, scraped.markdown, opts);
     results.push({ source, matches });
   }
   return { results };
 }
+
