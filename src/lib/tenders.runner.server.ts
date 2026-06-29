@@ -22,11 +22,17 @@ export async function runTenderCheck(): Promise<RunResult> {
   const sb = getServerClient();
   const { data: settings, error: sErr } = await sb
     .from("settings")
-    .select("notify_email")
+    .select("notify_email, ai_min_confidence, ai_include_maybe")
     .eq("id", 1)
     .single();
   if (sErr) throw new Error(sErr.message);
   const notifyEmail = (settings?.notify_email as string | null) ?? null;
+  const minConfidence = Number(
+    (settings as { ai_min_confidence?: number } | null)?.ai_min_confidence ?? 0.6,
+  );
+  const includeMaybe = Boolean(
+    (settings as { ai_include_maybe?: boolean } | null)?.ai_include_maybe ?? false,
+  );
 
   // Scrape ALL rows from each portal (no keyword pre-filter).
   const { results } = await scrapeAllSources();
