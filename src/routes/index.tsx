@@ -572,6 +572,71 @@ function SettingsPanel({
       <section className="space-y-3 border-t border-border pt-4">
         <div>
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            AI filter
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Only keep tenders the AI is at least this confident about. Optionally include
+            ambiguous “maybe” verdicts that meet the same threshold.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Minimum confidence</span>
+            <span className="font-medium tabular-nums">{Math.round(minConf * 100)}%</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={Math.round(minConf * 100)}
+            onChange={(e) => setMinConf(Number(e.target.value) / 100)}
+            className="w-full accent-primary"
+            aria-label="Minimum AI confidence"
+          />
+          <div className="flex justify-between text-[10px] text-muted-foreground">
+            <span>Loose (more hits)</span>
+            <span>Strict (fewer, surer)</span>
+          </div>
+        </div>
+        <label className="flex items-start gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={includeMaybe}
+            onChange={(e) => setIncludeMaybe(e.target.checked)}
+            className="mt-0.5 accent-primary"
+          />
+          <span>
+            <span className="font-medium text-foreground">Also include “maybe” verdicts</span>
+            <span className="block text-muted-foreground">
+              When off, only confirmed “yes” tenders meeting the threshold are kept.
+            </span>
+          </span>
+        </label>
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={savingAi}
+            onClick={async () => {
+              setSavingAi(true);
+              try {
+                await onSaveAi(minConf, includeMaybe);
+              } finally {
+                setSavingAi(false);
+              }
+            }}
+          >
+            {savingAi ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save AI filter"}
+          </Button>
+        </div>
+      </section>
+
+
+
+      <section className="space-y-3 border-t border-border pt-4">
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Match mode
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">{activeMode.hint}</p>
