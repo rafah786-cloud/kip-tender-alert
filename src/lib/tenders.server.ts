@@ -150,16 +150,14 @@ function findKeywordMatches(text: string, opts: MatchOptions): string[] {
 function parseListing(
   source: TenderSource,
   markdown: string,
-  opts: MatchOptions,
+  opts?: MatchOptions,
 ): ParsedTender[] {
   if (!markdown) return [];
-  // Break into table rows + paragraphs.
   const lines = markdown
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
-  // Group into "rows": a markdown table row, or a paragraph (single line here).
   const rows: string[] = [];
   let buf: string[] = [];
   for (const line of lines) {
@@ -184,16 +182,17 @@ function parseListing(
 
   for (const row of rows) {
     if (row.length < 20) continue;
-    const matches = findKeywordMatches(row, opts);
-    if (matches.length === 0) continue;
 
+    let matches: string[] = [];
+    if (opts) {
+      matches = findKeywordMatches(row, opts);
+      if (matches.length === 0) continue;
+    }
 
-    // Try to extract a link from markdown [text](url)
     const linkMatch = row.match(/\[([^\]]+)\]\((https?:[^)]+)\)/);
     const tender_url = linkMatch?.[2];
     const titleFromLink = linkMatch?.[1];
 
-    // Pipe-table parsing: | published | closing | title | organisation | ...
     const cells = row.startsWith("|")
       ? row.split("|").map((c) => c.trim()).filter((c) => c.length > 0)
       : null;
@@ -208,19 +207,18 @@ function parseListing(
       const dates = cells.filter((c) => dateRe.test(c));
       published_at = dates[0];
       closing_at = dates[1];
-      // Title is usually the longest cell, or the cell with the link.
       const linkCell = cells.find((c) => /\[[^\]]+\]\(/.test(c));
       const longestCell = [...cells].sort((a, b) => b.length - a.length)[0];
       const t = linkCell ?? longestCell;
       const tLink = t?.match(/\[([^\]]+)\]\(/);
       title = tLink?.[1] ?? t ?? title;
-      // Organisation: another long-ish cell that isn't the title or a date.
       organisation = cells.find(
         (c) => c !== t && !dateRe.test(c) && c.length > 8 && !/^\d+$/.test(c),
       );
     }
 
     title = title.replace(/\s+/g, " ").trim().slice(0, 500);
+    if (title.length < 10) continue;
     const fingerprint = sha1(`${source.key}|${title}|${published_at ?? ""}`);
     if (seen.has(fingerprint)) continue;
     seen.add(fingerprint);
@@ -239,7 +237,7 @@ function parseListing(
   return out;
 }
 
-export async function scrapeAllSources(opts: MatchOptions): Promise<{
+export async function scrapeAllSources(opts?: MatchOptions): Promise<{
   results: { source: TenderSource; matches: ParsedTender[]; error?: string }[];
 }> {
   const results: { source: TenderSource; matches: ParsedTender[]; error?: string }[] = [];
@@ -254,4 +252,5 @@ export async function scrapeAllSources(opts: MatchOptions): Promise<{
   }
   return { results };
 }
+
 
