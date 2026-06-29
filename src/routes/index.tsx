@@ -289,6 +289,18 @@ function Dashboard() {
                             ? "eTenders India"
                             : "Kerala"}
                       </Badge>
+                      {t.ai_verdict && (
+                        <Badge
+                          className="text-[10px]"
+                          variant={t.ai_verdict === "yes" ? "default" : "outline"}
+                          title={t.ai_reason ?? undefined}
+                        >
+                          AI: {t.ai_verdict}
+                          {typeof t.ai_confidence === "number" && t.ai_confidence > 0
+                            ? ` ${Math.round(t.ai_confidence * 100)}%`
+                            : ""}
+                        </Badge>
+                      )}
                       {t.matched_keywords.map((k) => (
                         <Badge key={k} className="text-[10px]" variant="outline">
                           {k}
@@ -299,6 +311,10 @@ function Dashboard() {
                     {t.organisation && (
                       <p className="text-xs text-muted-foreground">{t.organisation}</p>
                     )}
+                    {t.ai_reason && (
+                      <p className="text-xs italic text-muted-foreground">{t.ai_reason}</p>
+                    )}
+
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       {t.published_at && <span>Published: {t.published_at}</span>}
                       {t.closing_at && <span>Closes: {t.closing_at}</span>}
