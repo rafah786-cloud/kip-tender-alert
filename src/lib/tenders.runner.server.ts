@@ -1,6 +1,8 @@
-// Server-only orchestration: scrape sources, dedupe, insert new tenders, update settings.
+// Server-only orchestration: scrape sources (no keyword filter), AI-classify,
+// dedupe, insert mattress-supply tenders, update settings.
 import { createClient } from "@supabase/supabase-js";
 import { scrapeAllSources } from "./tenders.server";
+import { classifyTenders } from "./ai-classifier.server";
 
 function getServerClient() {
   return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
@@ -20,38 +22,61 @@ export async function runTenderCheck(): Promise<RunResult> {
   const sb = getServerClient();
   const { data: settings, error: sErr } = await sb
     .from("settings")
-    .select("keywords, exclude_keywords, match_mode, notify_email")
+    .select("notify_email")
     .eq("id", 1)
     .single();
   if (sErr) throw new Error(sErr.message);
-  const include = (settings?.keywords as string[]) ?? [];
-  const exclude = (settings?.exclude_keywords as string[]) ?? [];
-  const mode = ((settings?.match_mode as string) ?? "any") as "any" | "all" | "phrase";
   const notifyEmail = (settings?.notify_email as string | null) ?? null;
-  if (include.length === 0) {
-    await sb
-      .from("settings")
-      .update({
-        last_run_at: new Date().toISOString(),
-        last_run_status: "error",
-        last_run_message: "No keywords configured",
-      })
-      .eq("id", 1);
-    return {
-      ok: false,
-      new_count: 0,
-      total_matches: 0,
-      sources: [],
-      message: "No keywords configured",
-    };
+
+  // Scrape ALL rows from each portal (no keyword pre-filter).
+  const { results } = await scrapeAllSources();
+
+  // Flatten rows for AI classification.
+  type Row = (typeof results)[number]["matches"][number] & {
+    source_key: string;
+    source_url: string;
+    source_label: string;
+  };
+  const allRows: Row[] = [];
+  const summary: RunResult["sources"] = [];
+  for (const r of results) {
+    summary.push({
+      key: r.source.key,
+      label: r.source.label,
+      matches: 0,
+      error: r.error,
+    });
+    for (const m of r.matches) {
+      allRows.push({
+        ...m,
+        source_key: r.source.key,
+        source_url: r.source.url,
+        source_label: r.source.label,
+      });
+    }
   }
 
-  const { results } = await scrapeAllSources({ include, exclude, mode });
+  // AI classification.
+  let verdicts: Awaited<ReturnType<typeof classifyTenders>> = [];
+  let aiError = "";
+  if (allRows.length > 0) {
+    try {
+      verdicts = await classifyTenders(
+        allRows.map((r) => ({
+          id: r.fingerprint,
+          source_label: r.source_label,
+          text: `${r.title}\n${r.organisation ?? ""}\n${r.raw_excerpt}`,
+        })),
+      );
+    } catch (e) {
+      aiError = e instanceof Error ? e.message : String(e);
+    }
+  }
+  const verdictMap = new Map(verdicts.map((v) => [v.id, v]));
 
-
-  let total = 0;
+  // Keep only yes/maybe, insert.
   let inserted = 0;
-  const summary: RunResult["sources"] = [];
+  let totalKept = 0;
   const newTenders: Array<{
     title: string;
     source_label: string;
@@ -62,49 +87,66 @@ export async function runTenderCheck(): Promise<RunResult> {
     matched_keywords: string[];
   }> = [];
 
-  for (const r of results) {
-    total += r.matches.length;
-    summary.push({
-      key: r.source.key,
-      label: r.source.label,
-      matches: r.matches.length,
-      error: r.error,
+  // Group kept rows by source for clean upsert.
+  const bySource = new Map<string, Row[]>();
+  for (const row of allRows) {
+    const v = verdictMap.get(row.fingerprint);
+    if (!v) continue;
+    if (v.verdict === "no") continue;
+    totalKept++;
+    const arr = bySource.get(row.source_key) ?? [];
+    arr.push(row);
+    bySource.set(row.source_key, arr);
+  }
+
+  for (let i = 0; i < summary.length; i++) {
+    const sKey = summary[i].key;
+    const kept = bySource.get(sKey) ?? [];
+    summary[i].matches = kept.length;
+    if (kept.length === 0) continue;
+
+    const rows = kept.map((m) => {
+      const v = verdictMap.get(m.fingerprint)!;
+      return {
+        source: m.source_key,
+        source_url: m.source_url,
+        fingerprint: m.fingerprint,
+        title: m.title,
+        organisation: m.organisation ?? null,
+        published_at: m.published_at ?? null,
+        closing_at: m.closing_at ?? null,
+        tender_url: m.tender_url ?? null,
+        matched_keywords: v.category ? [v.category] : m.matched_keywords,
+        raw_excerpt: m.raw_excerpt,
+        ai_verdict: v.verdict,
+        ai_reason: v.reason,
+        ai_confidence: v.confidence,
+      };
     });
-    if (r.matches.length === 0) continue;
-    const rows = r.matches.map((m) => ({
-      source: r.source.key,
-      source_url: r.source.url,
-      fingerprint: m.fingerprint,
-      title: m.title,
-      organisation: m.organisation ?? null,
-      published_at: m.published_at ?? null,
-      closing_at: m.closing_at ?? null,
-      tender_url: m.tender_url ?? null,
-      matched_keywords: m.matched_keywords,
-      raw_excerpt: m.raw_excerpt,
-    }));
+
     const { data, error } = await sb
       .from("tenders")
       .upsert(rows, { onConflict: "fingerprint", ignoreDuplicates: true })
       .select("id, fingerprint");
     if (error) {
-      summary[summary.length - 1].error = error.message;
+      summary[i].error = (summary[i].error ? summary[i].error + "; " : "") + error.message;
       continue;
     }
     inserted += data?.length ?? 0;
     const insertedFps = new Set(
       (data ?? []).map((d: { fingerprint: string }) => d.fingerprint),
     );
-    for (const m of r.matches) {
+    for (const m of kept) {
       if (insertedFps.has(m.fingerprint)) {
+        const v = verdictMap.get(m.fingerprint)!;
         newTenders.push({
           title: m.title,
-          source_label: r.source.label,
+          source_label: m.source_label,
           organisation: m.organisation ?? null,
           published_at: m.published_at ?? null,
           closing_at: m.closing_at ?? null,
           tender_url: m.tender_url ?? null,
-          matched_keywords: m.matched_keywords,
+          matched_keywords: v.category ? [v.category] : m.matched_keywords,
         });
       }
     }
@@ -138,7 +180,8 @@ export async function runTenderCheck(): Promise<RunResult> {
   const status =
     errored.length === results.length ? "error" : errored.length > 0 ? "partial" : "ok";
   const message =
-    `Found ${total} matches across ${results.length} portals. ${inserted} new.` +
+    `Scanned ${allRows.length} tenders, AI kept ${totalKept} as mattress-related (${inserted} new).` +
+    (aiError ? ` AI error: ${aiError}.` : "") +
     emailNote +
     (errored.length ? ` Errors: ${errored.join("; ")}` : "");
 
@@ -154,7 +197,7 @@ export async function runTenderCheck(): Promise<RunResult> {
   return {
     ok: status !== "error",
     new_count: inserted,
-    total_matches: total,
+    total_matches: totalKept,
     sources: summary,
     message,
   };
