@@ -72,8 +72,11 @@ export const getSettings = createServerFn({ method: "GET" }).handler(async () =>
     last_run_message: data.last_run_message as string | null,
     notify_email: notifyEmail,
     email_suppressed: emailSuppressed,
+    ai_min_confidence: Number((data as { ai_min_confidence?: number }).ai_min_confidence ?? 0.6),
+    ai_include_maybe: Boolean((data as { ai_include_maybe?: boolean }).ai_include_maybe ?? false),
   } satisfies Settings;
 });
+
 
 function cleanList(arr: string[]): string[] {
   return Array.from(
