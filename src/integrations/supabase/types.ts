@@ -165,6 +165,8 @@ export type Database = {
           ai_verdict: string | null
           closing_at: string | null
           created_at: string
+          doc_excerpt: string | null
+          docs_checked: number
           fingerprint: string
           id: string
           matched_keywords: string[]
@@ -174,6 +176,7 @@ export type Database = {
           seen: boolean
           source: string
           source_url: string
+          stage1_verdict: string | null
           tender_url: string | null
           title: string
         }
@@ -183,6 +186,8 @@ export type Database = {
           ai_verdict?: string | null
           closing_at?: string | null
           created_at?: string
+          doc_excerpt?: string | null
+          docs_checked?: number
           fingerprint: string
           id?: string
           matched_keywords?: string[]
@@ -192,6 +197,7 @@ export type Database = {
           seen?: boolean
           source: string
           source_url: string
+          stage1_verdict?: string | null
           tender_url?: string | null
           title: string
         }
@@ -201,6 +207,8 @@ export type Database = {
           ai_verdict?: string | null
           closing_at?: string | null
           created_at?: string
+          doc_excerpt?: string | null
+          docs_checked?: number
           fingerprint?: string
           id?: string
           matched_keywords?: string[]
@@ -210,6 +218,7 @@ export type Database = {
           seen?: boolean
           source?: string
           source_url?: string
+          stage1_verdict?: string | null
           tender_url?: string | null
           title?: string
         }

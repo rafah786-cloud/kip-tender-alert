@@ -18,6 +18,10 @@ export interface TenderRow {
   ai_verdict: string | null;
   ai_reason: string | null;
   ai_confidence: number | null;
+  stage1_verdict: string | null;
+  docs_checked: number | null;
+  doc_excerpt: string | null;
+
 
 }
 

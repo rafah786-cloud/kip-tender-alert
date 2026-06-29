@@ -301,6 +301,11 @@ function Dashboard() {
                             : ""}
                         </Badge>
                       )}
+                      {typeof t.docs_checked === "number" && t.docs_checked > 0 && (
+                        <Badge className="text-[10px]" variant="secondary">
+                          {t.docs_checked} doc{t.docs_checked === 1 ? "" : "s"} read
+                        </Badge>
+                      )}
                       {t.matched_keywords.map((k) => (
                         <Badge key={k} className="text-[10px]" variant="outline">
                           {k}
@@ -314,6 +319,12 @@ function Dashboard() {
                     {t.ai_reason && (
                       <p className="text-xs italic text-muted-foreground">{t.ai_reason}</p>
                     )}
+                    {t.doc_excerpt && (
+                      <p className="text-xs text-muted-foreground border-l-2 border-primary/40 pl-2">
+                        “{t.doc_excerpt}”
+                      </p>
+                    )}
+
 
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       {t.published_at && <span>Published: {t.published_at}</span>}
