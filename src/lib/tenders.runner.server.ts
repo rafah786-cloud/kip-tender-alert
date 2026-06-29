@@ -138,10 +138,15 @@ export async function runTenderCheck(): Promise<RunResult> {
     }
   }
 
-  // Keep only deep verdict === "yes" (doc-confirmed).
+  // Keep deep verdict per user threshold + maybe inclusion setting.
   const bySource = new Map<string, DeepRow[]>();
   for (const c of toDeep) {
-    if (!c.deep || c.deep.verdict !== "yes") continue;
+    if (!c.deep) continue;
+    const v = c.deep.verdict;
+    const conf = c.deep.confidence ?? 0;
+    const verdictOk = v === "yes" || (includeMaybe && v === "maybe");
+    if (!verdictOk) continue;
+    if (conf < minConfidence) continue;
     totalKept++;
     const arr = bySource.get(c.source_key) ?? [];
     arr.push(c);
