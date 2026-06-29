@@ -1,4 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
+import { createClient } from "@supabase/supabase-js";
+
 
 export interface TenderRow {
   id: string;
@@ -13,6 +15,10 @@ export interface TenderRow {
   raw_excerpt: string | null;
   seen: boolean;
   created_at: string;
+  ai_verdict: string | null;
+  ai_reason: string | null;
+  ai_confidence: number | null;
+
 }
 
 export type MatchMode = "any" | "all" | "phrase";
@@ -29,11 +35,11 @@ export interface Settings {
 }
 
 function getServerClient() {
-  const { createClient } = require("@supabase/supabase-js") as typeof import("@supabase/supabase-js");
   return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
+
 
 export const getSettings = createServerFn({ method: "GET" }).handler(async () => {
   const sb = getServerClient();
