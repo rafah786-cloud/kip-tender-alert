@@ -160,6 +160,9 @@ export type Database = {
       }
       tenders: {
         Row: {
+          ai_confidence: number | null
+          ai_reason: string | null
+          ai_verdict: string | null
           closing_at: string | null
           created_at: string
           fingerprint: string
@@ -175,6 +178,9 @@ export type Database = {
           title: string
         }
         Insert: {
+          ai_confidence?: number | null
+          ai_reason?: string | null
+          ai_verdict?: string | null
           closing_at?: string | null
           created_at?: string
           fingerprint: string
@@ -190,6 +196,9 @@ export type Database = {
           title: string
         }
         Update: {
+          ai_confidence?: number | null
+          ai_reason?: string | null
+          ai_verdict?: string | null
           closing_at?: string | null
           created_at?: string
           fingerprint?: string
