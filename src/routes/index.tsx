@@ -200,6 +200,8 @@ function Dashboard() {
             emailSuppressed={settingsQ.data?.email_suppressed ?? false}
             lastMessage={settingsQ.data?.last_run_message ?? null}
             lastStatus={settingsQ.data?.last_run_status ?? null}
+            aiMinConfidence={settingsQ.data?.ai_min_confidence ?? 0.6}
+            aiIncludeMaybe={settingsQ.data?.ai_include_maybe ?? false}
             onClose={() => setShowSettings(false)}
             onSave={async (kws, ex, mode) => {
               await updateMatchSettingsFn({
@@ -212,6 +214,13 @@ function Dashboard() {
             onSaveEmail={async (email) => {
               await updateNotifyEmailFn({ data: { email } });
               toast.success(email ? "Email alerts enabled" : "Email alerts disabled");
+              qc.invalidateQueries({ queryKey: ["settings"] });
+            }}
+            onSaveAi={async (minConf, includeMaybe) => {
+              await updateAiSettingsFn({
+                data: { ai_min_confidence: minConf, ai_include_maybe: includeMaybe },
+              });
+              toast.success("AI filter saved");
               qc.invalidateQueries({ queryKey: ["settings"] });
             }}
           />
