@@ -35,11 +35,11 @@ export interface Settings {
 }
 
 function getServerClient() {
-  const { createClient } = require("@supabase/supabase-js") as typeof import("@supabase/supabase-js");
   return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
+
 
 export const getSettings = createServerFn({ method: "GET" }).handler(async () => {
   const sb = getServerClient();
