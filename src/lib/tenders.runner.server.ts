@@ -74,9 +74,10 @@ export async function runTenderCheck(): Promise<RunResult> {
   }
   const verdictMap = new Map(verdicts.map((v) => [v.id, v]));
 
-  // Keep only yes/maybe, insert.
+  // Stage 1 candidates (drop hard "no"); stage 2 inspects docs.
   let inserted = 0;
   let totalKept = 0;
+  let docCheckErr = "";
   const newTenders: Array<{
     title: string;
     source_label: string;
@@ -87,16 +88,58 @@ export async function runTenderCheck(): Promise<RunResult> {
     matched_keywords: string[];
   }> = [];
 
-  // Group kept rows by source for clean upsert.
-  const bySource = new Map<string, Row[]>();
+  // Run deep doc-classification on stage-1 yes/maybe candidates.
+  const { deepClassifyTender } = await import("./doc-classifier.server");
+  type DeepRow = Row & {
+    stage1: (typeof verdicts)[number];
+    deep?: Awaited<ReturnType<typeof deepClassifyTender>>;
+  };
+  const candidates: DeepRow[] = [];
   for (const row of allRows) {
     const v = verdictMap.get(row.fingerprint);
-    if (!v) continue;
-    if (v.verdict === "no") continue;
+    if (!v || v.verdict === "no") continue;
+    candidates.push({ ...row, stage1: v });
+  }
+  // Cap to a reasonable number per run to keep cost/latency bounded.
+  const DEEP_CAP = 15;
+  const toDeep = candidates.slice(0, DEEP_CAP);
+  for (const c of toDeep) {
+    if (!c.tender_url) {
+      // No detail URL — keep stage-1 verdict but mark as not doc-verified.
+      c.deep = {
+        verdict: c.stage1.verdict,
+        confidence: c.stage1.confidence,
+        reason: `No detail URL; stage-1 only: ${c.stage1.reason}`,
+        docs_checked: 0,
+      };
+      continue;
+    }
+    try {
+      c.deep = await deepClassifyTender({
+        title: c.title,
+        organisation: c.organisation ?? null,
+        source_label: c.source_label,
+        tender_url: c.tender_url,
+      });
+    } catch (e) {
+      docCheckErr = e instanceof Error ? e.message : String(e);
+      c.deep = {
+        verdict: "maybe",
+        confidence: 0,
+        reason: `Deep check failed: ${docCheckErr}`,
+        docs_checked: 0,
+      };
+    }
+  }
+
+  // Keep only deep verdict === "yes" (doc-confirmed).
+  const bySource = new Map<string, DeepRow[]>();
+  for (const c of toDeep) {
+    if (!c.deep || c.deep.verdict !== "yes") continue;
     totalKept++;
-    const arr = bySource.get(row.source_key) ?? [];
-    arr.push(row);
-    bySource.set(row.source_key, arr);
+    const arr = bySource.get(c.source_key) ?? [];
+    arr.push(c);
+    bySource.set(c.source_key, arr);
   }
 
   for (let i = 0; i < summary.length; i++) {
@@ -106,7 +149,7 @@ export async function runTenderCheck(): Promise<RunResult> {
     if (kept.length === 0) continue;
 
     const rows = kept.map((m) => {
-      const v = verdictMap.get(m.fingerprint)!;
+      const d = m.deep!;
       return {
         source: m.source_key,
         source_url: m.source_url,
@@ -116,11 +159,14 @@ export async function runTenderCheck(): Promise<RunResult> {
         published_at: m.published_at ?? null,
         closing_at: m.closing_at ?? null,
         tender_url: m.tender_url ?? null,
-        matched_keywords: v.category ? [v.category] : m.matched_keywords,
+        matched_keywords: d.category ? [d.category] : m.matched_keywords,
         raw_excerpt: m.raw_excerpt,
-        ai_verdict: v.verdict,
-        ai_reason: v.reason,
-        ai_confidence: v.confidence,
+        ai_verdict: d.verdict,
+        ai_reason: d.reason,
+        ai_confidence: d.confidence,
+        stage1_verdict: m.stage1.verdict,
+        docs_checked: d.docs_checked,
+        doc_excerpt: d.excerpt ?? null,
       };
     });
 
@@ -138,7 +184,7 @@ export async function runTenderCheck(): Promise<RunResult> {
     );
     for (const m of kept) {
       if (insertedFps.has(m.fingerprint)) {
-        const v = verdictMap.get(m.fingerprint)!;
+        const d = m.deep!;
         newTenders.push({
           title: m.title,
           source_label: m.source_label,
@@ -146,11 +192,12 @@ export async function runTenderCheck(): Promise<RunResult> {
           published_at: m.published_at ?? null,
           closing_at: m.closing_at ?? null,
           tender_url: m.tender_url ?? null,
-          matched_keywords: v.category ? [v.category] : m.matched_keywords,
+          matched_keywords: d.category ? [d.category] : m.matched_keywords,
         });
       }
     }
   }
+
 
   // Instant email alert when new tenders were inserted.
   let emailNote = "";
