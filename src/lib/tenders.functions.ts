@@ -13,6 +13,10 @@ export interface TenderRow {
   raw_excerpt: string | null;
   seen: boolean;
   created_at: string;
+  ai_verdict: string | null;
+  ai_reason: string | null;
+  ai_confidence: number | null;
+
 }
 
 export type MatchMode = "any" | "all" | "phrase";
