@@ -456,9 +456,12 @@ function SettingsPanel({
   emailSuppressed,
   lastMessage,
   lastStatus,
+  aiMinConfidence,
+  aiIncludeMaybe,
   onClose,
   onSave,
   onSaveEmail,
+  onSaveAi,
 }: {
   keywords: string[];
   excludeKeywords: string[];
@@ -467,9 +470,12 @@ function SettingsPanel({
   emailSuppressed: boolean;
   lastMessage: string | null;
   lastStatus: string | null;
+  aiMinConfidence: number;
+  aiIncludeMaybe: boolean;
   onClose: () => void;
   onSave: (kws: string[], exclude: string[], mode: MatchMode) => Promise<void>;
   onSaveEmail: (email: string | null) => Promise<void>;
+  onSaveAi: (minConf: number, includeMaybe: boolean) => Promise<void>;
 }) {
   const [list, setList] = useState<string[]>(keywords);
   const [exList, setExList] = useState<string[]>(excludeKeywords);
@@ -477,11 +483,17 @@ function SettingsPanel({
   const [saving, setSaving] = useState(false);
   const [emailDraft, setEmailDraft] = useState<string>(notifyEmail ?? "");
   const [savingEmail, setSavingEmail] = useState(false);
+  const [minConf, setMinConf] = useState<number>(aiMinConfidence);
+  const [includeMaybe, setIncludeMaybe] = useState<boolean>(aiIncludeMaybe);
+  const [savingAi, setSavingAi] = useState(false);
 
   useEffect(() => setList(keywords), [keywords]);
   useEffect(() => setExList(excludeKeywords), [excludeKeywords]);
   useEffect(() => setMode(matchMode), [matchMode]);
   useEffect(() => setEmailDraft(notifyEmail ?? ""), [notifyEmail]);
+  useEffect(() => setMinConf(aiMinConfidence), [aiMinConfidence]);
+  useEffect(() => setIncludeMaybe(aiIncludeMaybe), [aiIncludeMaybe]);
+
 
   const modes: { value: MatchMode; label: string; hint: string }[] = [
     { value: "any", label: "Any word", hint: "Match if any include keyword appears (word match)." },
