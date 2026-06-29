@@ -36,7 +36,10 @@ export interface Settings {
   last_run_message: string | null;
   notify_email: string | null;
   email_suppressed: boolean;
+  ai_min_confidence: number;
+  ai_include_maybe: boolean;
 }
+
 
 function getServerClient() {
   return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
