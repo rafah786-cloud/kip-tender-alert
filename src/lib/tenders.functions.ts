@@ -110,6 +110,24 @@ export const updateMatchSettings = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const updateAiSettings = createServerFn({ method: "POST" })
+  .inputValidator((d: { ai_min_confidence?: number; ai_include_maybe?: boolean }) => d)
+  .handler(async ({ data }) => {
+    const sb = getServerClient();
+    const patch: Record<string, unknown> = {};
+    if (typeof data.ai_min_confidence === "number" && Number.isFinite(data.ai_min_confidence)) {
+      const v = Math.min(1, Math.max(0, data.ai_min_confidence));
+      patch.ai_min_confidence = v;
+    }
+    if (typeof data.ai_include_maybe === "boolean") {
+      patch.ai_include_maybe = data.ai_include_maybe;
+    }
+    if (Object.keys(patch).length === 0) return { ok: true };
+    const { error } = await sb.from("settings").update(patch).eq("id", 1);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 // Back-compat alias for existing call sites.
 export const updateKeywords = createServerFn({ method: "POST" })
   .inputValidator((d: { keywords: string[] }) => d)
