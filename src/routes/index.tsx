@@ -21,10 +21,12 @@ import {
   markAllSeen,
   markSeen,
   runCheckNow,
+  updateAiSettings,
   updateMatchSettings,
   updateNotifyEmail,
   type MatchMode,
 } from "@/lib/tenders.functions";
+
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,6 +69,8 @@ function Dashboard() {
   const markAllSeenFn = useServerFn(markAllSeen);
   const updateMatchSettingsFn = useServerFn(updateMatchSettings);
   const updateNotifyEmailFn = useServerFn(updateNotifyEmail);
+  const updateAiSettingsFn = useServerFn(updateAiSettings);
+
 
   const settingsQ = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
   const tendersQ = useQuery({
@@ -196,6 +200,8 @@ function Dashboard() {
             emailSuppressed={settingsQ.data?.email_suppressed ?? false}
             lastMessage={settingsQ.data?.last_run_message ?? null}
             lastStatus={settingsQ.data?.last_run_status ?? null}
+            aiMinConfidence={settingsQ.data?.ai_min_confidence ?? 0.6}
+            aiIncludeMaybe={settingsQ.data?.ai_include_maybe ?? false}
             onClose={() => setShowSettings(false)}
             onSave={async (kws, ex, mode) => {
               await updateMatchSettingsFn({
@@ -208,6 +214,13 @@ function Dashboard() {
             onSaveEmail={async (email) => {
               await updateNotifyEmailFn({ data: { email } });
               toast.success(email ? "Email alerts enabled" : "Email alerts disabled");
+              qc.invalidateQueries({ queryKey: ["settings"] });
+            }}
+            onSaveAi={async (minConf, includeMaybe) => {
+              await updateAiSettingsFn({
+                data: { ai_min_confidence: minConf, ai_include_maybe: includeMaybe },
+              });
+              toast.success("AI filter saved");
               qc.invalidateQueries({ queryKey: ["settings"] });
             }}
           />
@@ -443,9 +456,12 @@ function SettingsPanel({
   emailSuppressed,
   lastMessage,
   lastStatus,
+  aiMinConfidence,
+  aiIncludeMaybe,
   onClose,
   onSave,
   onSaveEmail,
+  onSaveAi,
 }: {
   keywords: string[];
   excludeKeywords: string[];
@@ -454,9 +470,12 @@ function SettingsPanel({
   emailSuppressed: boolean;
   lastMessage: string | null;
   lastStatus: string | null;
+  aiMinConfidence: number;
+  aiIncludeMaybe: boolean;
   onClose: () => void;
   onSave: (kws: string[], exclude: string[], mode: MatchMode) => Promise<void>;
   onSaveEmail: (email: string | null) => Promise<void>;
+  onSaveAi: (minConf: number, includeMaybe: boolean) => Promise<void>;
 }) {
   const [list, setList] = useState<string[]>(keywords);
   const [exList, setExList] = useState<string[]>(excludeKeywords);
@@ -464,11 +483,17 @@ function SettingsPanel({
   const [saving, setSaving] = useState(false);
   const [emailDraft, setEmailDraft] = useState<string>(notifyEmail ?? "");
   const [savingEmail, setSavingEmail] = useState(false);
+  const [minConf, setMinConf] = useState<number>(aiMinConfidence);
+  const [includeMaybe, setIncludeMaybe] = useState<boolean>(aiIncludeMaybe);
+  const [savingAi, setSavingAi] = useState(false);
 
   useEffect(() => setList(keywords), [keywords]);
   useEffect(() => setExList(excludeKeywords), [excludeKeywords]);
   useEffect(() => setMode(matchMode), [matchMode]);
   useEffect(() => setEmailDraft(notifyEmail ?? ""), [notifyEmail]);
+  useEffect(() => setMinConf(aiMinConfidence), [aiMinConfidence]);
+  useEffect(() => setIncludeMaybe(aiIncludeMaybe), [aiIncludeMaybe]);
+
 
   const modes: { value: MatchMode; label: string; hint: string }[] = [
     { value: "any", label: "Any word", hint: "Match if any include keyword appears (word match)." },
@@ -543,6 +568,71 @@ function SettingsPanel({
           )}
         </div>
       </section>
+
+      <section className="space-y-3 border-t border-border pt-4">
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            AI filter
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Only keep tenders the AI is at least this confident about. Optionally include
+            ambiguous “maybe” verdicts that meet the same threshold.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Minimum confidence</span>
+            <span className="font-medium tabular-nums">{Math.round(minConf * 100)}%</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={Math.round(minConf * 100)}
+            onChange={(e) => setMinConf(Number(e.target.value) / 100)}
+            className="w-full accent-primary"
+            aria-label="Minimum AI confidence"
+          />
+          <div className="flex justify-between text-[10px] text-muted-foreground">
+            <span>Loose (more hits)</span>
+            <span>Strict (fewer, surer)</span>
+          </div>
+        </div>
+        <label className="flex items-start gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={includeMaybe}
+            onChange={(e) => setIncludeMaybe(e.target.checked)}
+            className="mt-0.5 accent-primary"
+          />
+          <span>
+            <span className="font-medium text-foreground">Also include “maybe” verdicts</span>
+            <span className="block text-muted-foreground">
+              When off, only confirmed “yes” tenders meeting the threshold are kept.
+            </span>
+          </span>
+        </label>
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={savingAi}
+            onClick={async () => {
+              setSavingAi(true);
+              try {
+                await onSaveAi(minConf, includeMaybe);
+              } finally {
+                setSavingAi(false);
+              }
+            }}
+          >
+            {savingAi ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save AI filter"}
+          </Button>
+        </div>
+      </section>
+
+
 
       <section className="space-y-3 border-t border-border pt-4">
         <div>

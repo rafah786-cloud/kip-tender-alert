@@ -36,7 +36,10 @@ export interface Settings {
   last_run_message: string | null;
   notify_email: string | null;
   email_suppressed: boolean;
+  ai_min_confidence: number;
+  ai_include_maybe: boolean;
 }
+
 
 function getServerClient() {
   return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
@@ -69,8 +72,11 @@ export const getSettings = createServerFn({ method: "GET" }).handler(async () =>
     last_run_message: data.last_run_message as string | null,
     notify_email: notifyEmail,
     email_suppressed: emailSuppressed,
+    ai_min_confidence: Number((data as { ai_min_confidence?: number }).ai_min_confidence ?? 0.6),
+    ai_include_maybe: Boolean((data as { ai_include_maybe?: boolean }).ai_include_maybe ?? false),
   } satisfies Settings;
 });
+
 
 function cleanList(arr: string[]): string[] {
   return Array.from(
@@ -97,6 +103,24 @@ export const updateMatchSettings = createServerFn({ method: "POST" })
         throw new Error("Invalid match mode");
       }
       patch.match_mode = data.match_mode;
+    }
+    if (Object.keys(patch).length === 0) return { ok: true };
+    const { error } = await sb.from("settings").update(patch).eq("id", 1);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const updateAiSettings = createServerFn({ method: "POST" })
+  .inputValidator((d: { ai_min_confidence?: number; ai_include_maybe?: boolean }) => d)
+  .handler(async ({ data }) => {
+    const sb = getServerClient();
+    const patch: Record<string, unknown> = {};
+    if (typeof data.ai_min_confidence === "number" && Number.isFinite(data.ai_min_confidence)) {
+      const v = Math.min(1, Math.max(0, data.ai_min_confidence));
+      patch.ai_min_confidence = v;
+    }
+    if (typeof data.ai_include_maybe === "boolean") {
+      patch.ai_include_maybe = data.ai_include_maybe;
     }
     if (Object.keys(patch).length === 0) return { ok: true };
     const { error } = await sb.from("settings").update(patch).eq("id", 1);

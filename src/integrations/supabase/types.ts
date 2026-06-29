@@ -103,6 +103,8 @@ export type Database = {
       }
       settings: {
         Row: {
+          ai_include_maybe: boolean
+          ai_min_confidence: number
           exclude_keywords: Json
           id: number
           keywords: string[]
@@ -113,6 +115,8 @@ export type Database = {
           notify_email: string | null
         }
         Insert: {
+          ai_include_maybe?: boolean
+          ai_min_confidence?: number
           exclude_keywords?: Json
           id?: number
           keywords?: string[]
@@ -123,6 +127,8 @@ export type Database = {
           notify_email?: string | null
         }
         Update: {
+          ai_include_maybe?: boolean
+          ai_min_confidence?: number
           exclude_keywords?: Json
           id?: number
           keywords?: string[]
