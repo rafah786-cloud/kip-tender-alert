@@ -244,7 +244,7 @@ export async function runTenderCheck(): Promise<RunResult> {
   const status =
     errored.length === results.length ? "error" : errored.length > 0 ? "partial" : "ok";
   const message =
-    `Scanned ${allRows.length} tenders → stage-1 kept ${candidates.length} → deep-checked ${toDeep.length} (read BOQ/contract docs) → ${totalKept} kept at ≥${Math.round(minConfidence * 100)}% confidence${includeMaybe ? " (incl. maybe)" : " (yes only)"} (${inserted} new).` +
+    `Scanned ${allRows.length} tenders → deep-audited BOQ/contract docs for ${toDeep.length} → ${totalKept} kept at ≥${Math.round(minConfidence * 100)}% confidence${includeMaybe ? " (incl. maybe)" : " (yes only)"} (${inserted} new).` +
     (aiError ? ` Stage-1 error: ${aiError}.` : "") +
     (docCheckErr ? ` Doc-check error: ${docCheckErr}.` : "") +
     emailNote +
