@@ -87,8 +87,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:site", content: "@Lovable" },
       { name: "twitter:title", content: "eTenders" },
       { name: "twitter:description", content: "Tender Finder Pro automatically searches government websites for mattress and pillow supply tenders." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/7ae29d04-ebea-4145-a399-130063c657ee/id-preview-c41ca5ec--a3b53314-b358-42e3-b88f-fd9ac65af656.lovable.app-1782987478337.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/7ae29d04-ebea-4145-a399-130063c657ee/id-preview-c41ca5ec--a3b53314-b358-42e3-b88f-fd9ac65af656.lovable.app-1782987478337.png" },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/Lw0gR7977khvbGCmnXKoutSkshF3/social-images/social-1782988345933-IMG_0984.webp" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/Lw0gR7977khvbGCmnXKoutSkshF3/social-images/social-1782988345933-IMG_0984.webp" },
     ],
     links: [
       {
