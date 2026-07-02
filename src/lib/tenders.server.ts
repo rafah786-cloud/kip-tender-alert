@@ -9,23 +9,46 @@ export interface TenderSource {
   url: string;
 }
 
-export const TENDER_SOURCES: TenderSource[] = [
+// Each portal exposes several listing views via its left-nav menu
+// (Latest Active, by Location, by Organisation, by Classification, Status,
+// Cancelled/Retendered). We hit each one so the AI sees tenders across the
+// full menu, not just the home page.
+const NIC_MENU_PAGES: { suffix: string; label: string }[] = [
+  { suffix: "FrontEndLatestActiveTenders", label: "Latest Active" },
+  { suffix: "FrontEndAdvancedSearch", label: "Advanced Search" },
+  { suffix: "FrontEndTendersByLocation", label: "By Location" },
+  { suffix: "FrontEndTendersByOrganisation", label: "By Organisation" },
+  { suffix: "FrontEndTendersByClassification", label: "By Classification" },
+  { suffix: "FrontEndTenderStatus", label: "Tender Status" },
+  { suffix: "FrontEndCancelledTenders", label: "Cancelled / Retendered" },
+];
+
+const PORTAL_BASES: { key: string; label: string; base: string }[] = [
   {
     key: "cppp",
     label: "Central Public Procurement Portal (eprocure.gov.in)",
-    url: "https://eprocure.gov.in/eprocure/app?page=FrontEndLatestActiveTenders&service=page",
+    base: "https://eprocure.gov.in/eprocure/app",
   },
   {
     key: "etenders_central",
     label: "eTenders India (etenders.gov.in)",
-    url: "https://etenders.gov.in/eprocure/app?page=FrontEndLatestActiveTenders&service=page",
+    base: "https://etenders.gov.in/eprocure/app",
   },
   {
     key: "kerala",
     label: "Kerala eTenders (etenders.kerala.gov.in)",
-    url: "https://etenders.kerala.gov.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page",
+    base: "https://etenders.kerala.gov.in/nicgep/app",
   },
 ];
+
+export const TENDER_SOURCES: TenderSource[] = PORTAL_BASES.flatMap((p) =>
+  NIC_MENU_PAGES.map((m) => ({
+    key: `${p.key}__${m.suffix.toLowerCase()}`,
+    label: `${p.label} — ${m.label}`,
+    url: `${p.base}?page=${m.suffix}&service=page`,
+  })),
+);
+
 
 interface ScrapeOk {
   ok: true;
