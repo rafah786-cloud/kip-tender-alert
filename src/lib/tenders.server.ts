@@ -260,19 +260,43 @@ function parseListing(
   return out;
 }
 
+// Concurrency limit for Firecrawl fan-out. Each portal has ~7 menu pages, and
+// we hit 3 portals => ~21 requests. Firecrawl handles this comfortably.
+const SCRAPE_CONCURRENCY = 6;
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (true) {
+      const i = cursor++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  const workers = Array.from({ length: Math.min(limit, items.length) }, worker);
+  await Promise.all(workers);
+  return results;
+}
+
 export async function scrapeAllSources(opts?: MatchOptions): Promise<{
   results: { source: TenderSource; matches: ParsedTender[]; error?: string }[];
 }> {
-  const results: { source: TenderSource; matches: ParsedTender[]; error?: string }[] = [];
-  for (const source of TENDER_SOURCES) {
-    const scraped = await firecrawlScrape(source.url);
-    if (!scraped.ok) {
-      results.push({ source, matches: [], error: scraped.error });
-      continue;
-    }
-    const matches = parseListing(source, scraped.markdown, opts);
-    results.push({ source, matches });
-  }
+  const results = await mapWithConcurrency(
+    TENDER_SOURCES,
+    SCRAPE_CONCURRENCY,
+    async (source) => {
+      const scraped = await firecrawlScrape(source.url);
+      if (!scraped.ok) {
+        return { source, matches: [] as ParsedTender[], error: scraped.error };
+      }
+      return { source, matches: parseListing(source, scraped.markdown, opts) };
+    },
+  );
   return { results };
 }
 
@@ -294,30 +318,33 @@ export async function scrapeAllSourcesRaw(
   opts?: MatchOptions,
   markdownChars = 6000,
 ): Promise<{ results: RawScrapeResult[] }> {
-  const results: RawScrapeResult[] = [];
-  for (const source of TENDER_SOURCES) {
-    const scraped = await firecrawlScrape(source.url);
-    if (!scraped.ok) {
-      results.push({
+  const results = await mapWithConcurrency(
+    TENDER_SOURCES,
+    SCRAPE_CONCURRENCY,
+    async (source): Promise<RawScrapeResult> => {
+      const scraped = await firecrawlScrape(source.url);
+      if (!scraped.ok) {
+        return {
+          source,
+          ok: false,
+          error: scraped.error,
+          markdown: "",
+          markdown_chars: 0,
+          parsed: [],
+        };
+      }
+      return {
         source,
-        ok: false,
-        error: scraped.error,
-        markdown: "",
-        markdown_chars: 0,
-        parsed: [],
-      });
-      continue;
-    }
-    results.push({
-      source,
-      ok: true,
-      markdown: scraped.markdown.slice(0, markdownChars),
-      markdown_chars: scraped.markdown.length,
-      parsed: parseListing(source, scraped.markdown, opts),
-    });
-  }
+        ok: true,
+        markdown: scraped.markdown.slice(0, markdownChars),
+        markdown_chars: scraped.markdown.length,
+        parsed: parseListing(source, scraped.markdown, opts),
+      };
+    },
+  );
   return { results };
 }
+
 
 
 
