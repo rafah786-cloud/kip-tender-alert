@@ -258,3 +258,70 @@ export async function deepClassifyTender(input: DeepInput): Promise<DeepResult> 
     docs,
   );
 }
+
+export interface DeepDebugResult {
+  result: DeepResult;
+  page_ok: boolean;
+  page_error?: string;
+  page_markdown: string; // truncated
+  discovered_doc_urls: string[];
+  docs_used: { filename: string; mime: string; size_bytes: number }[];
+}
+
+/**
+ * Debug variant of deepClassifyTender: same pipeline but also returns the
+ * intermediate artefacts (scraped detail-page markdown, discovered doc links,
+ * documents actually sent to the model) so a caller can see WHY a verdict
+ * came out the way it did.
+ */
+export async function deepClassifyTenderDebug(
+  input: DeepInput,
+  opts?: { pageChars?: number },
+): Promise<DeepDebugResult> {
+  const page = await firecrawl(input.tender_url);
+  if (!page.ok) {
+    return {
+      result: {
+        verdict: "maybe",
+        confidence: 0,
+        reason: `Detail page unreachable: ${page.error}`,
+        docs_checked: 0,
+      },
+      page_ok: false,
+      page_error: page.error,
+      page_markdown: "",
+      discovered_doc_urls: [],
+      docs_used: [],
+    };
+  }
+
+  const docUrls = pickDocLinks(page.markdown, page.links);
+  const docs: { filename: string; mime: string; base64: string; size: number }[] = [];
+  for (const u of docUrls) {
+    const d = await downloadDoc(u);
+    if (!d.ok) continue;
+    if (!/^application\/(pdf|vnd\.|msword|octet-stream)/.test(d.mime)) continue;
+    const name = u.split("/").pop()?.split("?")[0] || "doc";
+    docs.push({ filename: name, mime: d.mime, base64: d.base64, size: d.size });
+    if (docs.length >= 3) break;
+  }
+
+  const result = await geminiDeepClassify(
+    {
+      title: input.title,
+      org: input.organisation,
+      source: input.source_label,
+      pageText: page.markdown,
+    },
+    docs.map((d) => ({ filename: d.filename, mime: d.mime, base64: d.base64 })),
+  );
+
+  return {
+    result,
+    page_ok: true,
+    page_markdown: page.markdown.slice(0, opts?.pageChars ?? 4000),
+    discovered_doc_urls: docUrls,
+    docs_used: docs.map((d) => ({ filename: d.filename, mime: d.mime, size_bytes: d.size })),
+  };
+}
+
