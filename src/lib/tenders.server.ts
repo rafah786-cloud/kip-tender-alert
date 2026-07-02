@@ -265,19 +265,49 @@ function parseListing(
   return out;
 }
 
+// Run scrapes with limited concurrency so 20+ menu pages don't fan out all at
+// once (Firecrawl throttles + Worker CPU budget).
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const i = cursor++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 export async function scrapeAllSources(opts?: MatchOptions): Promise<{
   results: { source: TenderSource; matches: ParsedTender[]; error?: string }[];
 }> {
-  const results: { source: TenderSource; matches: ParsedTender[]; error?: string }[] = [];
-  for (const source of TENDER_SOURCES) {
+  const raw = await mapWithConcurrency(TENDER_SOURCES, 4, async (source) => {
     const scraped = await firecrawlScrape(source.url);
     if (!scraped.ok) {
-      results.push({ source, matches: [], error: scraped.error });
-      continue;
+      return { source, matches: [] as ParsedTender[], error: scraped.error };
     }
-    const matches = parseListing(source, scraped.markdown, opts);
-    results.push({ source, matches });
-  }
+    return { source, matches: parseListing(source, scraped.markdown, opts) };
+  });
+
+  // Cross-menu dedupe: the same tender shows up under Latest, By Location,
+  // By Organisation etc. Keep the first occurrence keyed on a normalised title.
+  const seenTitles = new Set<string>();
+  const results = raw.map((r) => {
+    const kept = r.matches.filter((m) => {
+      const norm = m.title.toLowerCase().replace(/\s+/g, " ").trim();
+      if (seenTitles.has(norm)) return false;
+      seenTitles.add(norm);
+      return true;
+    });
+    return { ...r, matches: kept };
+  });
   return { results };
 }
 
@@ -292,37 +322,35 @@ export interface RawScrapeResult {
 
 /**
  * Debug variant: returns the raw markdown returned by Firecrawl for each
- * source (truncated to `markdownChars`) alongside the parsed rows, so a
- * caller can see exactly what the scraper is working with.
+ * source (truncated to `markdownChars`) alongside the parsed rows.
  */
 export async function scrapeAllSourcesRaw(
   opts?: MatchOptions,
   markdownChars = 6000,
 ): Promise<{ results: RawScrapeResult[] }> {
-  const results: RawScrapeResult[] = [];
-  for (const source of TENDER_SOURCES) {
+  const results = await mapWithConcurrency(TENDER_SOURCES, 4, async (source) => {
     const scraped = await firecrawlScrape(source.url);
     if (!scraped.ok) {
-      results.push({
+      return {
         source,
-        ok: false,
+        ok: false as const,
         error: scraped.error,
         markdown: "",
         markdown_chars: 0,
-        parsed: [],
-      });
-      continue;
+        parsed: [] as ParsedTender[],
+      };
     }
-    results.push({
+    return {
       source,
-      ok: true,
+      ok: true as const,
       markdown: scraped.markdown.slice(0, markdownChars),
       markdown_chars: scraped.markdown.length,
       parsed: parseListing(source, scraped.markdown, opts),
-    });
-  }
+    };
+  });
   return { results };
 }
+
 
 
 
