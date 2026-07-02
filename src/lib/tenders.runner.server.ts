@@ -94,21 +94,27 @@ export async function runTenderCheck(): Promise<RunResult> {
     matched_keywords: string[];
   }> = [];
 
-  // Run deep doc-classification on stage-1 yes/maybe candidates.
+  // Deep BOQ audit runs on EVERY scraped tender, regardless of stage-1 title
+  // verdict. Stage-1 is kept only as an informational hint; the authoritative
+  // decision comes from reading the tender's actual BOQ/contract documents.
   const { deepClassifyTender } = await import("./doc-classifier.server");
   type DeepRow = Row & {
     stage1: (typeof verdicts)[number];
     deep?: Awaited<ReturnType<typeof deepClassifyTender>>;
   };
-  const candidates: DeepRow[] = [];
-  for (const row of allRows) {
-    const v = verdictMap.get(row.fingerprint);
-    if (!v || v.verdict === "no") continue;
-    candidates.push({ ...row, stage1: v });
-  }
-  // Cap to a reasonable number per run to keep cost/latency bounded.
-  const DEEP_CAP = 15;
+  const candidates: DeepRow[] = allRows.map((row) => ({
+    ...row,
+    stage1: verdictMap.get(row.fingerprint) ?? {
+      id: row.fingerprint,
+      verdict: "maybe" as const,
+      confidence: 0,
+      reason: "stage-1 skipped",
+    },
+  }));
+  // Cap per run to keep cost/latency bounded (deep audit downloads PDFs).
+  const DEEP_CAP = 40;
   const toDeep = candidates.slice(0, DEEP_CAP);
+
   for (const c of toDeep) {
     if (!c.tender_url) {
       // No detail URL — keep stage-1 verdict but mark as not doc-verified.
@@ -238,7 +244,7 @@ export async function runTenderCheck(): Promise<RunResult> {
   const status =
     errored.length === results.length ? "error" : errored.length > 0 ? "partial" : "ok";
   const message =
-    `Scanned ${allRows.length} tenders → stage-1 kept ${candidates.length} → deep-checked ${toDeep.length} (read BOQ/contract docs) → ${totalKept} kept at ≥${Math.round(minConfidence * 100)}% confidence${includeMaybe ? " (incl. maybe)" : " (yes only)"} (${inserted} new).` +
+    `Scanned ${allRows.length} tenders → deep-audited BOQ/contract docs for ${toDeep.length} → ${totalKept} kept at ≥${Math.round(minConfidence * 100)}% confidence${includeMaybe ? " (incl. maybe)" : " (yes only)"} (${inserted} new).` +
     (aiError ? ` Stage-1 error: ${aiError}.` : "") +
     (docCheckErr ? ` Doc-check error: ${docCheckErr}.` : "") +
     emailNote +
