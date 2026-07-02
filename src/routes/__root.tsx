@@ -77,14 +77,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
+      { title: "eTenders" },
+      { name: "description", content: "Tender Finder Pro automatically searches government websites for mattress and pillow supply tenders." },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { property: "og:title", content: "eTenders" },
+      { property: "og:description", content: "Tender Finder Pro automatically searches government websites for mattress and pillow supply tenders." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "eTenders" },
+      { name: "twitter:description", content: "Tender Finder Pro automatically searches government websites for mattress and pillow supply tenders." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/7ae29d04-ebea-4145-a399-130063c657ee/id-preview-c41ca5ec--a3b53314-b358-42e3-b88f-fd9ac65af656.lovable.app-1782987478337.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/7ae29d04-ebea-4145-a399-130063c657ee/id-preview-c41ca5ec--a3b53314-b358-42e3-b88f-fd9ac65af656.lovable.app-1782987478337.png" },
     ],
     links: [
       {
