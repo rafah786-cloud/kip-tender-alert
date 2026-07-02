@@ -9,23 +9,46 @@ export interface TenderSource {
   url: string;
 }
 
-export const TENDER_SOURCES: TenderSource[] = [
+// Each portal exposes several listing views via its left-nav menu
+// (Latest Active, by Location, by Organisation, by Classification, Status,
+// Cancelled/Retendered). We hit each one so the AI sees tenders across the
+// full menu, not just the home page.
+const NIC_MENU_PAGES: { suffix: string; label: string }[] = [
+  { suffix: "FrontEndLatestActiveTenders", label: "Latest Active" },
+  { suffix: "FrontEndAdvancedSearch", label: "Advanced Search" },
+  { suffix: "FrontEndTendersByLocation", label: "By Location" },
+  { suffix: "FrontEndTendersByOrganisation", label: "By Organisation" },
+  { suffix: "FrontEndTendersByClassification", label: "By Classification" },
+  { suffix: "FrontEndTenderStatus", label: "Tender Status" },
+  { suffix: "FrontEndCancelledTenders", label: "Cancelled / Retendered" },
+];
+
+const PORTAL_BASES: { key: string; label: string; base: string }[] = [
   {
     key: "cppp",
     label: "Central Public Procurement Portal (eprocure.gov.in)",
-    url: "https://eprocure.gov.in/eprocure/app?page=FrontEndLatestActiveTenders&service=page",
+    base: "https://eprocure.gov.in/eprocure/app",
   },
   {
     key: "etenders_central",
     label: "eTenders India (etenders.gov.in)",
-    url: "https://etenders.gov.in/eprocure/app?page=FrontEndLatestActiveTenders&service=page",
+    base: "https://etenders.gov.in/eprocure/app",
   },
   {
     key: "kerala",
     label: "Kerala eTenders (etenders.kerala.gov.in)",
-    url: "https://etenders.kerala.gov.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page",
+    base: "https://etenders.kerala.gov.in/nicgep/app",
   },
 ];
+
+export const TENDER_SOURCES: TenderSource[] = PORTAL_BASES.flatMap((p) =>
+  NIC_MENU_PAGES.map((m) => ({
+    key: `${p.key}__${m.suffix.toLowerCase()}`,
+    label: `${p.label} — ${m.label}`,
+    url: `${p.base}?page=${m.suffix}&service=page`,
+  })),
+);
+
 
 interface ScrapeOk {
   ok: true;
@@ -237,19 +260,43 @@ function parseListing(
   return out;
 }
 
+// Concurrency limit for Firecrawl fan-out. Each portal has ~7 menu pages, and
+// we hit 3 portals => ~21 requests. Firecrawl handles this comfortably.
+const SCRAPE_CONCURRENCY = 6;
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (true) {
+      const i = cursor++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  const workers = Array.from({ length: Math.min(limit, items.length) }, worker);
+  await Promise.all(workers);
+  return results;
+}
+
 export async function scrapeAllSources(opts?: MatchOptions): Promise<{
   results: { source: TenderSource; matches: ParsedTender[]; error?: string }[];
 }> {
-  const results: { source: TenderSource; matches: ParsedTender[]; error?: string }[] = [];
-  for (const source of TENDER_SOURCES) {
-    const scraped = await firecrawlScrape(source.url);
-    if (!scraped.ok) {
-      results.push({ source, matches: [], error: scraped.error });
-      continue;
-    }
-    const matches = parseListing(source, scraped.markdown, opts);
-    results.push({ source, matches });
-  }
+  const results = await mapWithConcurrency(
+    TENDER_SOURCES,
+    SCRAPE_CONCURRENCY,
+    async (source) => {
+      const scraped = await firecrawlScrape(source.url);
+      if (!scraped.ok) {
+        return { source, matches: [] as ParsedTender[], error: scraped.error };
+      }
+      return { source, matches: parseListing(source, scraped.markdown, opts) };
+    },
+  );
   return { results };
 }
 
@@ -271,30 +318,33 @@ export async function scrapeAllSourcesRaw(
   opts?: MatchOptions,
   markdownChars = 6000,
 ): Promise<{ results: RawScrapeResult[] }> {
-  const results: RawScrapeResult[] = [];
-  for (const source of TENDER_SOURCES) {
-    const scraped = await firecrawlScrape(source.url);
-    if (!scraped.ok) {
-      results.push({
+  const results = await mapWithConcurrency(
+    TENDER_SOURCES,
+    SCRAPE_CONCURRENCY,
+    async (source): Promise<RawScrapeResult> => {
+      const scraped = await firecrawlScrape(source.url);
+      if (!scraped.ok) {
+        return {
+          source,
+          ok: false,
+          error: scraped.error,
+          markdown: "",
+          markdown_chars: 0,
+          parsed: [],
+        };
+      }
+      return {
         source,
-        ok: false,
-        error: scraped.error,
-        markdown: "",
-        markdown_chars: 0,
-        parsed: [],
-      });
-      continue;
-    }
-    results.push({
-      source,
-      ok: true,
-      markdown: scraped.markdown.slice(0, markdownChars),
-      markdown_chars: scraped.markdown.length,
-      parsed: parseListing(source, scraped.markdown, opts),
-    });
-  }
+        ok: true,
+        markdown: scraped.markdown.slice(0, markdownChars),
+        markdown_chars: scraped.markdown.length,
+        parsed: parseListing(source, scraped.markdown, opts),
+      };
+    },
+  );
   return { results };
 }
+
 
 
 
