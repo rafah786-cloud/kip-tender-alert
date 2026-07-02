@@ -9,22 +9,50 @@ export interface TenderSource {
   url: string;
 }
 
+// Each portal exposes several menu pages (Latest Active Tenders, Tenders by
+// Location, Tenders by Organisation, Tenders by Classification, Tenders by
+// Value, MSE tenders, Archived / Cancelled). We hit each menu so the AI sees
+// listings across all classifications, not just the homepage's "latest" list.
+type PortalMenu = { key: string; label: string; path: string };
+
+const NIC_MENUS: PortalMenu[] = [
+  { key: "latest_active", label: "Latest Active Tenders", path: "FrontEndLatestActiveTenders" },
+  { key: "by_location", label: "Tenders by Location", path: "FrontEndTendersByLocation" },
+  { key: "by_organisation", label: "Tenders by Organisation", path: "FrontEndTendersByOrganisation" },
+  { key: "by_classification", label: "Tenders by Classification", path: "FrontEndTendersByClassification" },
+  { key: "by_value", label: "Tenders by Value", path: "FrontEndAdvancedSearch" },
+  { key: "mse_tenders", label: "MSE Tenders", path: "FrontEndMSETendersView" },
+  { key: "cancelled", label: "Cancelled Tenders", path: "FrontEndCancelledTenders" },
+];
+
+function buildPortal(
+  keyPrefix: string,
+  labelPrefix: string,
+  base: string,
+): TenderSource[] {
+  return NIC_MENUS.map((m) => ({
+    key: `${keyPrefix}__${m.key}`,
+    label: `${labelPrefix} — ${m.label}`,
+    url: `${base}?page=${m.path}&service=page`,
+  }));
+}
+
 export const TENDER_SOURCES: TenderSource[] = [
-  {
-    key: "cppp",
-    label: "Central Public Procurement Portal (eprocure.gov.in)",
-    url: "https://eprocure.gov.in/eprocure/app?page=FrontEndLatestActiveTenders&service=page",
-  },
-  {
-    key: "etenders_central",
-    label: "eTenders India (etenders.gov.in)",
-    url: "https://etenders.gov.in/eprocure/app?page=FrontEndLatestActiveTenders&service=page",
-  },
-  {
-    key: "kerala",
-    label: "Kerala eTenders (etenders.kerala.gov.in)",
-    url: "https://etenders.kerala.gov.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page",
-  },
+  ...buildPortal(
+    "cppp",
+    "Central Public Procurement Portal (eprocure.gov.in)",
+    "https://eprocure.gov.in/eprocure/app",
+  ),
+  ...buildPortal(
+    "etenders_central",
+    "eTenders India (etenders.gov.in)",
+    "https://etenders.gov.in/eprocure/app",
+  ),
+  ...buildPortal(
+    "kerala",
+    "Kerala eTenders (etenders.kerala.gov.in)",
+    "https://etenders.kerala.gov.in/nicgep/app",
+  ),
 ];
 
 interface ScrapeOk {
