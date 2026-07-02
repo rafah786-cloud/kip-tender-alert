@@ -19,6 +19,17 @@ export const Route = createFileRoute("/api/public/debug/tender-scan")({
   server: {
     handlers: {
       GET: async ({ request }) => {
+        const secret = process.env.CRON_SECRET;
+        if (!secret) {
+          return new Response("Server not configured", { status: 503 });
+        }
+        const header = request.headers.get("authorization") ?? "";
+        const provided = header.startsWith("Bearer ")
+          ? header.slice("Bearer ".length)
+          : new URL(request.url).searchParams.get("secret") ?? "";
+        if (provided !== secret) {
+          return new Response("Unauthorized", { status: 401 });
+        }
         try {
           const url = new URL(request.url);
           const limit = Math.min(
