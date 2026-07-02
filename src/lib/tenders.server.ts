@@ -9,22 +9,50 @@ export interface TenderSource {
   url: string;
 }
 
+// Each portal exposes several menu pages (Latest Active Tenders, Tenders by
+// Location, Tenders by Organisation, Tenders by Classification, Tenders by
+// Value, MSE tenders, Archived / Cancelled). We hit each menu so the AI sees
+// listings across all classifications, not just the homepage's "latest" list.
+type PortalMenu = { key: string; label: string; path: string };
+
+const NIC_MENUS: PortalMenu[] = [
+  { key: "latest_active", label: "Latest Active Tenders", path: "FrontEndLatestActiveTenders" },
+  { key: "by_location", label: "Tenders by Location", path: "FrontEndTendersByLocation" },
+  { key: "by_organisation", label: "Tenders by Organisation", path: "FrontEndTendersByOrganisation" },
+  { key: "by_classification", label: "Tenders by Classification", path: "FrontEndTendersByClassification" },
+  { key: "by_value", label: "Tenders by Value", path: "FrontEndAdvancedSearch" },
+  { key: "mse_tenders", label: "MSE Tenders", path: "FrontEndMSETendersView" },
+  { key: "cancelled", label: "Cancelled Tenders", path: "FrontEndCancelledTenders" },
+];
+
+function buildPortal(
+  keyPrefix: string,
+  labelPrefix: string,
+  base: string,
+): TenderSource[] {
+  return NIC_MENUS.map((m) => ({
+    key: `${keyPrefix}__${m.key}`,
+    label: `${labelPrefix} — ${m.label}`,
+    url: `${base}?page=${m.path}&service=page`,
+  }));
+}
+
 export const TENDER_SOURCES: TenderSource[] = [
-  {
-    key: "cppp",
-    label: "Central Public Procurement Portal (eprocure.gov.in)",
-    url: "https://eprocure.gov.in/eprocure/app?page=FrontEndLatestActiveTenders&service=page",
-  },
-  {
-    key: "etenders_central",
-    label: "eTenders India (etenders.gov.in)",
-    url: "https://etenders.gov.in/eprocure/app?page=FrontEndLatestActiveTenders&service=page",
-  },
-  {
-    key: "kerala",
-    label: "Kerala eTenders (etenders.kerala.gov.in)",
-    url: "https://etenders.kerala.gov.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page",
-  },
+  ...buildPortal(
+    "cppp",
+    "Central Public Procurement Portal (eprocure.gov.in)",
+    "https://eprocure.gov.in/eprocure/app",
+  ),
+  ...buildPortal(
+    "etenders_central",
+    "eTenders India (etenders.gov.in)",
+    "https://etenders.gov.in/eprocure/app",
+  ),
+  ...buildPortal(
+    "kerala",
+    "Kerala eTenders (etenders.kerala.gov.in)",
+    "https://etenders.kerala.gov.in/nicgep/app",
+  ),
 ];
 
 interface ScrapeOk {
@@ -237,19 +265,49 @@ function parseListing(
   return out;
 }
 
+// Run scrapes with limited concurrency so 20+ menu pages don't fan out all at
+// once (Firecrawl throttles + Worker CPU budget).
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const i = cursor++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 export async function scrapeAllSources(opts?: MatchOptions): Promise<{
   results: { source: TenderSource; matches: ParsedTender[]; error?: string }[];
 }> {
-  const results: { source: TenderSource; matches: ParsedTender[]; error?: string }[] = [];
-  for (const source of TENDER_SOURCES) {
+  const raw = await mapWithConcurrency(TENDER_SOURCES, 4, async (source) => {
     const scraped = await firecrawlScrape(source.url);
     if (!scraped.ok) {
-      results.push({ source, matches: [], error: scraped.error });
-      continue;
+      return { source, matches: [] as ParsedTender[], error: scraped.error };
     }
-    const matches = parseListing(source, scraped.markdown, opts);
-    results.push({ source, matches });
-  }
+    return { source, matches: parseListing(source, scraped.markdown, opts) };
+  });
+
+  // Cross-menu dedupe: the same tender shows up under Latest, By Location,
+  // By Organisation etc. Keep the first occurrence keyed on a normalised title.
+  const seenTitles = new Set<string>();
+  const results = raw.map((r) => {
+    const kept = r.matches.filter((m) => {
+      const norm = m.title.toLowerCase().replace(/\s+/g, " ").trim();
+      if (seenTitles.has(norm)) return false;
+      seenTitles.add(norm);
+      return true;
+    });
+    return { ...r, matches: kept };
+  });
   return { results };
 }
 
@@ -264,37 +322,35 @@ export interface RawScrapeResult {
 
 /**
  * Debug variant: returns the raw markdown returned by Firecrawl for each
- * source (truncated to `markdownChars`) alongside the parsed rows, so a
- * caller can see exactly what the scraper is working with.
+ * source (truncated to `markdownChars`) alongside the parsed rows.
  */
 export async function scrapeAllSourcesRaw(
   opts?: MatchOptions,
   markdownChars = 6000,
 ): Promise<{ results: RawScrapeResult[] }> {
-  const results: RawScrapeResult[] = [];
-  for (const source of TENDER_SOURCES) {
+  const results = await mapWithConcurrency(TENDER_SOURCES, 4, async (source) => {
     const scraped = await firecrawlScrape(source.url);
     if (!scraped.ok) {
-      results.push({
+      return {
         source,
-        ok: false,
+        ok: false as const,
         error: scraped.error,
         markdown: "",
         markdown_chars: 0,
-        parsed: [],
-      });
-      continue;
+        parsed: [] as ParsedTender[],
+      };
     }
-    results.push({
+    return {
       source,
-      ok: true,
+      ok: true as const,
       markdown: scraped.markdown.slice(0, markdownChars),
       markdown_chars: scraped.markdown.length,
       parsed: parseListing(source, scraped.markdown, opts),
-    });
-  }
+    };
+  });
   return { results };
 }
+
 
 
 
