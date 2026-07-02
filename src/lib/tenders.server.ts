@@ -253,4 +253,48 @@ export async function scrapeAllSources(opts?: MatchOptions): Promise<{
   return { results };
 }
 
+export interface RawScrapeResult {
+  source: TenderSource;
+  ok: boolean;
+  error?: string;
+  markdown: string;
+  markdown_chars: number;
+  parsed: ParsedTender[];
+}
+
+/**
+ * Debug variant: returns the raw markdown returned by Firecrawl for each
+ * source (truncated to `markdownChars`) alongside the parsed rows, so a
+ * caller can see exactly what the scraper is working with.
+ */
+export async function scrapeAllSourcesRaw(
+  opts?: MatchOptions,
+  markdownChars = 6000,
+): Promise<{ results: RawScrapeResult[] }> {
+  const results: RawScrapeResult[] = [];
+  for (const source of TENDER_SOURCES) {
+    const scraped = await firecrawlScrape(source.url);
+    if (!scraped.ok) {
+      results.push({
+        source,
+        ok: false,
+        error: scraped.error,
+        markdown: "",
+        markdown_chars: 0,
+        parsed: [],
+      });
+      continue;
+    }
+    results.push({
+      source,
+      ok: true,
+      markdown: scraped.markdown.slice(0, markdownChars),
+      markdown_chars: scraped.markdown.length,
+      parsed: parseListing(source, scraped.markdown, opts),
+    });
+  }
+  return { results };
+}
+
+
 
