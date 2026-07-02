@@ -17,6 +17,7 @@ import { Route as LovableEmailTransactionalSendRouteImport } from './routes/lova
 import { Route as LovableEmailTransactionalPreviewRouteImport } from './routes/lovable/email/transactional/preview'
 import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
 import { Route as ApiPublicHooksCheckTendersRouteImport } from './routes/api/public/hooks/check-tenders'
+import { Route as ApiPublicDebugTenderScanRouteImport } from './routes/api/public/debug/tender-scan'
 
 const UnsubscribeRoute = UnsubscribeRouteImport.update({
   id: '/unsubscribe',
@@ -62,12 +63,19 @@ const ApiPublicHooksCheckTendersRoute =
     path: '/api/public/hooks/check-tenders',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicDebugTenderScanRoute =
+  ApiPublicDebugTenderScanRouteImport.update({
+    id: '/api/public/debug/tender-scan',
+    path: '/api/public/debug/tender-scan',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/api/public/debug/tender-scan': typeof ApiPublicDebugTenderScanRoute
   '/api/public/hooks/check-tenders': typeof ApiPublicHooksCheckTendersRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
@@ -78,6 +86,7 @@ export interface FileRoutesByTo {
   '/unsubscribe': typeof UnsubscribeRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/api/public/debug/tender-scan': typeof ApiPublicDebugTenderScanRoute
   '/api/public/hooks/check-tenders': typeof ApiPublicHooksCheckTendersRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
@@ -89,6 +98,7 @@ export interface FileRoutesById {
   '/unsubscribe': typeof UnsubscribeRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/api/public/debug/tender-scan': typeof ApiPublicDebugTenderScanRoute
   '/api/public/hooks/check-tenders': typeof ApiPublicHooksCheckTendersRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
@@ -101,6 +111,7 @@ export interface FileRouteTypes {
     | '/unsubscribe'
     | '/email/unsubscribe'
     | '/lovable/email/suppression'
+    | '/api/public/debug/tender-scan'
     | '/api/public/hooks/check-tenders'
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
@@ -111,6 +122,7 @@ export interface FileRouteTypes {
     | '/unsubscribe'
     | '/email/unsubscribe'
     | '/lovable/email/suppression'
+    | '/api/public/debug/tender-scan'
     | '/api/public/hooks/check-tenders'
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
@@ -121,6 +133,7 @@ export interface FileRouteTypes {
     | '/unsubscribe'
     | '/email/unsubscribe'
     | '/lovable/email/suppression'
+    | '/api/public/debug/tender-scan'
     | '/api/public/hooks/check-tenders'
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
@@ -132,6 +145,7 @@ export interface RootRouteChildren {
   UnsubscribeRoute: typeof UnsubscribeRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
   LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
+  ApiPublicDebugTenderScanRoute: typeof ApiPublicDebugTenderScanRoute
   ApiPublicHooksCheckTendersRoute: typeof ApiPublicHooksCheckTendersRoute
   LovableEmailQueueProcessRoute: typeof LovableEmailQueueProcessRoute
   LovableEmailTransactionalPreviewRoute: typeof LovableEmailTransactionalPreviewRoute
@@ -196,6 +210,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksCheckTendersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/debug/tender-scan': {
+      id: '/api/public/debug/tender-scan'
+      path: '/api/public/debug/tender-scan'
+      fullPath: '/api/public/debug/tender-scan'
+      preLoaderRoute: typeof ApiPublicDebugTenderScanRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -204,6 +225,7 @@ const rootRouteChildren: RootRouteChildren = {
   UnsubscribeRoute: UnsubscribeRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
   LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
+  ApiPublicDebugTenderScanRoute: ApiPublicDebugTenderScanRoute,
   ApiPublicHooksCheckTendersRoute: ApiPublicHooksCheckTendersRoute,
   LovableEmailQueueProcessRoute: LovableEmailQueueProcessRoute,
   LovableEmailTransactionalPreviewRoute: LovableEmailTransactionalPreviewRoute,
