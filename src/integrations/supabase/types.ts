@@ -261,6 +261,7 @@ export type Database = {
           read_ct: number
         }[]
       }
+      trigger_tender_check: { Args: { secret: string }; Returns: number }
     }
     Enums: {
       [_ in never]: never
