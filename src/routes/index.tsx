@@ -64,7 +64,7 @@ function Dashboard() {
   const router = useRouter();
   const getSettingsFn = useServerFn(getSettings);
   const listTendersFn = useServerFn(listTenders);
-  const runCheckFn = useServerFn(runCheckNow);
+  const runCheckFn = useServerFn(startCheckInBackground);
   const markSeenFn = useServerFn(markSeen);
   const markAllSeenFn = useServerFn(markAllSeen);
   const updateMatchSettingsFn = useServerFn(updateMatchSettings);
