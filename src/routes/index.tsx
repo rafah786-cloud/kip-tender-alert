@@ -202,15 +202,15 @@ function Dashboard() {
           <Button
             size="sm"
             onClick={() => runMut.mutate()}
-            disabled={runMut.isPending}
+            disabled={runMut.isPending || isRunning}
             className="gap-1.5"
           >
-            {runMut.isPending ? (
+            {runMut.isPending || isRunning ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="h-4 w-4" />
             )}
-            Check
+            {isRunning ? "Running…" : "Check"}
           </Button>
         </div>
       </header>
