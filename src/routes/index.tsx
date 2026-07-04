@@ -72,11 +72,20 @@ function Dashboard() {
   const updateAiSettingsFn = useServerFn(updateAiSettings);
 
 
-  const settingsQ = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
+  const settingsQ = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => getSettingsFn(),
+    // While a background check is in progress, poll faster so the UI reflects
+    // completion even if the user just came back to the app.
+    refetchInterval: (q) =>
+      q.state.data?.last_run_status === "running" ? 4_000 : 30_000,
+    refetchIntervalInBackground: true,
+  });
+  const isRunning = settingsQ.data?.last_run_status === "running";
   const tendersQ = useQuery({
     queryKey: ["tenders"],
     queryFn: () => listTendersFn(),
-    refetchInterval: 60_000,
+    refetchInterval: isRunning ? 6_000 : 60_000,
   });
 
   const [showSettings, setShowSettings] = useState(false);
