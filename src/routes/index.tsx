@@ -20,7 +20,7 @@ import {
   listTenders,
   markAllSeen,
   markSeen,
-  runCheckNow,
+  startCheckInBackground,
   updateAiSettings,
   updateMatchSettings,
   updateNotifyEmail,
