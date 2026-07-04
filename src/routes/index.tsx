@@ -118,12 +118,28 @@ function Dashboard() {
   const runMut = useMutation({
     mutationFn: () => runCheckFn(),
     onSuccess: (r) => {
-      toast.success(`${r.new_count} new · ${r.total_matches} total matches`);
-      qc.invalidateQueries({ queryKey: ["tenders"] });
+      if (r.already_running) {
+        toast.info("A check is already running in the background.");
+      } else {
+        toast.success("Check started — running in the background. You can close the app.");
+      }
       qc.invalidateQueries({ queryKey: ["settings"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Check failed"),
   });
+
+  // When a running check flips to a terminal state, refresh tender list + toast.
+  const prevStatusRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const status = settingsQ.data?.last_run_status;
+    if (prevStatusRef.current === "running" && status && status !== "running") {
+      qc.invalidateQueries({ queryKey: ["tenders"] });
+      if (status === "ok") toast.success("Background check finished.");
+      else if (status === "partial") toast.warning("Background check finished with some errors.");
+      else if (status === "error") toast.error("Background check failed.");
+    }
+    prevStatusRef.current = status;
+  }, [settingsQ.data?.last_run_status, qc]);
 
   const markMut = useMutation({
     mutationFn: (v: { id: string; seen: boolean }) => markSeenFn({ data: v }),
