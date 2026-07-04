@@ -20,7 +20,7 @@ import {
   listTenders,
   markAllSeen,
   markSeen,
-  runCheckNow,
+  startCheckInBackground,
   updateAiSettings,
   updateMatchSettings,
   updateNotifyEmail,
@@ -64,7 +64,7 @@ function Dashboard() {
   const router = useRouter();
   const getSettingsFn = useServerFn(getSettings);
   const listTendersFn = useServerFn(listTenders);
-  const runCheckFn = useServerFn(runCheckNow);
+  const runCheckFn = useServerFn(startCheckInBackground);
   const markSeenFn = useServerFn(markSeen);
   const markAllSeenFn = useServerFn(markAllSeen);
   const updateMatchSettingsFn = useServerFn(updateMatchSettings);
@@ -72,11 +72,20 @@ function Dashboard() {
   const updateAiSettingsFn = useServerFn(updateAiSettings);
 
 
-  const settingsQ = useQuery({ queryKey: ["settings"], queryFn: () => getSettingsFn() });
+  const settingsQ = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => getSettingsFn(),
+    // While a background check is in progress, poll faster so the UI reflects
+    // completion even if the user just came back to the app.
+    refetchInterval: (q) =>
+      q.state.data?.last_run_status === "running" ? 4_000 : 30_000,
+    refetchIntervalInBackground: true,
+  });
+  const isRunning = settingsQ.data?.last_run_status === "running";
   const tendersQ = useQuery({
     queryKey: ["tenders"],
     queryFn: () => listTendersFn(),
-    refetchInterval: 60_000,
+    refetchInterval: isRunning ? 6_000 : 60_000,
   });
 
   const [showSettings, setShowSettings] = useState(false);
@@ -109,12 +118,28 @@ function Dashboard() {
   const runMut = useMutation({
     mutationFn: () => runCheckFn(),
     onSuccess: (r) => {
-      toast.success(`${r.new_count} new · ${r.total_matches} total matches`);
-      qc.invalidateQueries({ queryKey: ["tenders"] });
+      if (r.already_running) {
+        toast.info("A check is already running in the background.");
+      } else {
+        toast.success("Check started — running in the background. You can close the app.");
+      }
       qc.invalidateQueries({ queryKey: ["settings"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Check failed"),
   });
+
+  // When a running check flips to a terminal state, refresh tender list + toast.
+  const prevStatusRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const status = settingsQ.data?.last_run_status;
+    if (prevStatusRef.current === "running" && status && status !== "running") {
+      qc.invalidateQueries({ queryKey: ["tenders"] });
+      if (status === "ok") toast.success("Background check finished.");
+      else if (status === "partial") toast.warning("Background check finished with some errors.");
+      else if (status === "error") toast.error("Background check failed.");
+    }
+    prevStatusRef.current = status;
+  }, [settingsQ.data?.last_run_status, qc]);
 
   const markMut = useMutation({
     mutationFn: (v: { id: string; seen: boolean }) => markSeenFn({ data: v }),
@@ -177,15 +202,15 @@ function Dashboard() {
           <Button
             size="sm"
             onClick={() => runMut.mutate()}
-            disabled={runMut.isPending}
+            disabled={runMut.isPending || isRunning}
             className="gap-1.5"
           >
-            {runMut.isPending ? (
+            {runMut.isPending || isRunning ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="h-4 w-4" />
             )}
-            Check
+            {isRunning ? "Running…" : "Check"}
           </Button>
         </div>
       </header>

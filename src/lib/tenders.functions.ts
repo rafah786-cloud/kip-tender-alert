@@ -192,3 +192,46 @@ export const runCheckNow = createServerFn({ method: "POST" }).handler(async () =
   const { runTenderCheck } = await import("./tenders.runner.server");
   return runTenderCheck();
 });
+
+// Fire-and-forget: marks the run as "running" and hands the actual scrape+AI
+// work to Postgres pg_net so it completes even if the user closes/minimizes
+// the app. The endpoint it calls is the same CRON hook used by the scheduler.
+export const startCheckInBackground = createServerFn({ method: "POST" }).handler(
+  async () => {
+    const sb = getServerClient();
+    const secret = process.env.CRON_SECRET;
+    if (!secret) throw new Error("CRON_SECRET not configured");
+
+    // If a run is already in progress, don't queue another one.
+    const { data: cur } = await sb
+      .from("settings")
+      .select("last_run_status")
+      .eq("id", 1)
+      .single();
+    if (cur?.last_run_status === "running") {
+      return { ok: true, already_running: true as const };
+    }
+
+    await sb
+      .from("settings")
+      .update({
+        last_run_status: "running",
+        last_run_message: "Background check in progress — you can close the app.",
+        last_run_at: new Date().toISOString(),
+      })
+      .eq("id", 1);
+
+    const { error } = await sb.rpc("trigger_tender_check", { secret });
+    if (error) {
+      await sb
+        .from("settings")
+        .update({
+          last_run_status: "error",
+          last_run_message: `Failed to start background check: ${error.message}`,
+        })
+        .eq("id", 1);
+      throw new Error(error.message);
+    }
+    return { ok: true, already_running: false as const };
+  },
+);
