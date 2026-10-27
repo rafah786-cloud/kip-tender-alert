@@ -237,18 +237,45 @@ export const startCheckInBackground = createServerFn({ method: "POST" }).handler
   async () => {
     await requireAdminAccess();
     const sb = getServerClient();
-    // The database trigger reads the dedicated scanner token from Vault.
-    // Keep the optional legacy env value only for compatibility with older schemas.
-    const secret = process.env.CRON_SECRET ?? "";
+    const { getServerRuntimeEnv } = await import("./runtime-env.server");
+    if (!getServerRuntimeEnv("FIRECRAWL_API_KEY")) {
+      const message =
+        "Cannot start scan: FIRECRAWL_API_KEY is not available to the deployed server runtime. Confirm the secret is saved for this Lovable deployment, then sync and publish the latest source.";
+      await sb
+        .from("settings")
+        .update({
+          last_run_status: "error",
+          last_run_message: message,
+          last_run_at: new Date().toISOString(),
+        })
+        .eq("id", 1);
+      throw new Error(message);
+    }
 
-    // If a run is already in progress, don't queue another one.
+    // Recover a scan lock only if the worker has stopped updating for 30 minutes.
+    // This prevents a failed webhook/worker from permanently disabling Scan Now.
     const { data: cur } = await sb
       .from("settings")
-      .select("last_run_status")
+      .select("last_run_status, last_run_at")
       .eq("id", 1)
       .single();
-    if (cur?.last_run_status === "running") {
+    const previousStartedAt = cur?.last_run_at ? Date.parse(cur.last_run_at) : Number.NaN;
+    const freshRunningScan =
+      cur?.last_run_status === "running" &&
+      Number.isFinite(previousStartedAt) &&
+      Date.now() - previousStartedAt < 30 * 60 * 1000;
+    if (freshRunningScan) {
       return { ok: true, already_running: true as const };
+    }
+    if (cur?.last_run_status === "running") {
+      await sb
+        .from("settings")
+        .update({
+          last_run_status: "error",
+          last_run_message:
+            "Recovered a stale scan lock after 30 minutes without completion. Starting a fresh scan.",
+        })
+        .eq("id", 1);
     }
 
     await sb
@@ -260,7 +287,9 @@ export const startCheckInBackground = createServerFn({ method: "POST" }).handler
       })
       .eq("id", 1);
 
-    const { error } = await sb.rpc("trigger_tender_check", { secret });
+    // The database reads its scheduler token from Vault; this legacy argument is
+    // retained for backward compatibility and is intentionally not a credential.
+    const { error } = await sb.rpc("trigger_tender_check", { secret: "" });
     if (error) {
       await sb
         .from("settings")
