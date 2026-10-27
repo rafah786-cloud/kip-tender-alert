@@ -379,6 +379,16 @@ function Dashboard() {
           </div>
         </section>
 
+        {(settingsQ.isError || tendersQ.isError) && (
+          <div role="alert" className="flex flex-col gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-semibold">{tendersQ.isError ? "Tender results could not be loaded" : "Some dashboard settings could not be loaded"}</p>
+              <p className="mt-1 text-xs text-rose-800/80">{tendersQ.error instanceof Error ? tendersQ.error.message : settingsQ.error instanceof Error ? settingsQ.error.message : "Check your connection and retry."}</p>
+            </div>
+            <Button size="sm" variant="outline" className="shrink-0 border-rose-300 bg-white text-rose-900 hover:bg-rose-100" onClick={() => { void qc.invalidateQueries({ queryKey: ["settings"] }); void qc.invalidateQueries({ queryKey: ["tenders"] }); }}>Retry loading</Button>
+          </div>
+        )}
+
         {showSettings && (
           <SettingsPanel
             keywords={settingsQ.data?.keywords ?? []}
@@ -548,11 +558,27 @@ function Dashboard() {
         </div>
 
         {tendersQ.isLoading ? (
-          <div className="flex items-center justify-center py-16 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
+          <div className="flex items-center justify-center gap-3 py-16 text-sm text-muted-foreground" role="status">
+            <Loader2 className="h-5 w-5 animate-spin" /> Loading matched tenders…
           </div>
+        ) : tendersQ.isError ? (
+          <Card className="rounded-2xl border-rose-200 bg-rose-50 p-8 text-center">
+            <AlertTriangle className="mx-auto h-7 w-7 text-rose-600" />
+            <h3 className="mt-3 text-base font-semibold text-rose-950">Unable to load tender results</h3>
+            <p className="mt-2 text-sm text-rose-800">Your saved tenders are not being displayed right now. Retry the request before assuming there are no matches.</p>
+            <Button className="mt-4" size="sm" onClick={() => { void qc.invalidateQueries({ queryKey: ["tenders"] }); }}>Try again</Button>
+          </Card>
         ) : filtered.length === 0 ? (
-          <EmptyState onCheck={() => runMut.mutate()} loading={runMut.isPending} />
+          tenderCount > 0 ? (
+            <Card className="rounded-2xl border-dashed p-10 text-center">
+              <Search className="mx-auto h-7 w-7 text-muted-foreground" />
+              <h3 className="mt-3 text-base font-semibold">No tenders match these filters</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Try a different phrase or show all saved tenders.</p>
+              <Button variant="outline" size="sm" className="mt-4" onClick={() => { setSearch(""); setFilter("all"); }}>Clear filters</Button>
+            </Card>
+          ) : (
+            <EmptyState onCheck={() => runMut.mutate()} loading={runMut.isPending} />
+          )
         ) : (
           <div className="space-y-2">
             {filtered.map((t) => (
@@ -815,6 +841,8 @@ function SettingsPanel({
               setSavingEmail(true);
               try {
                 await onSaveEmail(emailDraft.trim() || null);
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Could not save email alert settings");
               } finally {
                 setSavingEmail(false);
               }
@@ -832,6 +860,8 @@ function SettingsPanel({
                 try {
                   await onSaveEmail(null);
                   setEmailDraft("");
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "Could not disable email alerts");
                 } finally {
                   setSavingEmail(false);
                 }
@@ -896,6 +926,8 @@ function SettingsPanel({
               setSavingAi(true);
               try {
                 await onSaveAi(minConf, includeMaybe);
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Could not save AI filter");
               } finally {
                 setSavingAi(false);
               }
@@ -977,6 +1009,8 @@ function SettingsPanel({
             try {
               await onSave(list, exList, mode);
               onClose();
+            } catch (e) {
+              toast.error(e instanceof Error ? e.message : "Could not save match settings");
             } finally {
               setSaving(false);
             }
