@@ -1,5 +1,6 @@
 // Server-only: fetch a tender's detail page + attached BOQ/contract docs, then
 // re-classify with Gemini reading the actual document text (PDF understanding).
+import { getServerRuntimeEnv } from "./runtime-env.server";
 
 const FIRECRAWL_URL = "https://api.firecrawl.dev/v2/scrape";
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
@@ -39,8 +40,13 @@ interface FirecrawlErr {
 }
 
 async function firecrawl(url: string): Promise<FirecrawlOk | FirecrawlErr> {
-  const key = process.env.FIRECRAWL_API_KEY;
-  if (!key) return { ok: false, error: "Missing FIRECRAWL_API_KEY" };
+  const key = getServerRuntimeEnv("FIRECRAWL_API_KEY");
+  if (!key) {
+    return {
+      ok: false,
+      error: "FIRECRAWL_API_KEY is not available to the deployed server runtime. Verify the Lovable project secret and publish the latest source.",
+    };
+  }
   try {
     const res = await fetch(FIRECRAWL_URL, {
       method: "POST",
@@ -146,8 +152,8 @@ async function geminiDeepClassify(
   ctx: { title: string; org: string | null; source: string; pageText: string },
   docs: { filename: string; mime: string; base64: string }[],
 ): Promise<DeepResult> {
-  const key = process.env.LOVABLE_API_KEY;
-  if (!key) throw new Error("LOVABLE_API_KEY missing");
+  const key = getServerRuntimeEnv("LOVABLE_API_KEY");
+  if (!key) throw new Error("LOVABLE_API_KEY is not available to the deployed server runtime.");
 
   const userBlocks: ContentBlock[] = [
     {
