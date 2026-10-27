@@ -2,8 +2,7 @@ import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
-
-type RuntimeEnv = Record<string, unknown>;
+import { setServerRuntimeBindings } from "./lib/runtime-env.server";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -27,30 +26,8 @@ async function getServerEntry(): Promise<ServerEntry> {
  * Never log secret values. Existing process.env values take precedence.
  */
 function exposeRuntimeSecrets(env: unknown): void {
-  if (!env || typeof env !== "object") return;
-  if (typeof process === "undefined" || !process.env) return;
+  setServerRuntimeBindings(env);
 
-  const bindings = env as RuntimeEnv;
-  for (const name of [
-    "FIRECRAWL_API_KEY",
-    "LOVABLE_API_KEY",
-    "CRON_SECRET",
-    "TENDER_WATCH_ADMIN_TOKEN",
-    "SUPABASE_URL",
-    "SUPABASE_SERVICE_ROLE_KEY",
-    "VITE_SUPABASE_URL",
-    "VITE_SUPABASE_ANON_KEY",
-  ]) {
-    const value = bindings[name];
-    if (typeof value === "string" && value.length > 0 && !process.env[name]) {
-      try {
-        process.env[name] = value;
-      } catch {
-        // Some runtimes expose process.env as read-only; handlers can still use
-        // their native runtime bindings where supported.
-      }
-    }
-  }
 }
 
 // h3 swallows in-handler throws into a normal 500 Response with body
