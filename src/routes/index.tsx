@@ -299,7 +299,13 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
       q.state.data?.last_run_status === "running" ? 4_000 : 30_000,
     refetchIntervalInBackground: true,
   });
-  const isRunning = settingsQ.data?.last_run_status === "running";
+  const lastRunStartedAt = settingsQ.data?.last_run_at
+    ? Date.parse(settingsQ.data.last_run_at)
+    : Number.NaN;
+  const isRunning =
+    settingsQ.data?.last_run_status === "running" &&
+    Number.isFinite(lastRunStartedAt) &&
+    Date.now() - lastRunStartedAt < 30 * 60 * 1000;
   const sourceHealthQ = useQuery({
     queryKey: ["sourceHealth"],
     queryFn: () => listSourceHealthFn(),
@@ -353,7 +359,10 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
       }
       qc.invalidateQueries({ queryKey: ["settings"] });
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Check failed"),
+    onError: (e) => {
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      toast.error(e instanceof Error ? e.message : "Check failed");
+    },
   });
 
   // When a running check flips to a terminal state, refresh tender list + toast.
