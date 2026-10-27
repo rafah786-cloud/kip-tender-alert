@@ -17,6 +17,7 @@ import {
 
 import {
   getSettings,
+  getSourceHealth,
   listTenders,
   markAllSeen,
   markSeen,
@@ -25,6 +26,7 @@ import {
   updateMatchSettings,
   updateNotifyEmail,
   type MatchMode,
+  type SourceHealthRow,
 } from "@/lib/tenders.functions";
 
 
@@ -86,6 +88,12 @@ function Dashboard() {
     queryKey: ["tenders"],
     queryFn: () => listTendersFn(),
     refetchInterval: isRunning ? 6_000 : 60_000,
+  });
+  const getSourceHealthFn = useServerFn(getSourceHealth);
+  const healthQ = useQuery({
+    queryKey: ["source-health"],
+    queryFn: () => getSourceHealthFn(),
+    refetchInterval: isRunning ? 8_000 : 60_000,
   });
 
   const [showSettings, setShowSettings] = useState(false);
