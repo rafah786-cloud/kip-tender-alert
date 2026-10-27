@@ -552,7 +552,7 @@ function Dashboard() {
         )}
 
         <p className="pt-4 text-center text-[11px] text-muted-foreground">
-          Auto-checks every 2 hours. Keep this tab open to receive browser notifications.
+          Scheduled checks run every 2 hours. Email alerts can arrive in the background; browser notifications require this tab to stay open and browser permission to be enabled.
         </p>
       </main>
     </div>
