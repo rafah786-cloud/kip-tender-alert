@@ -193,6 +193,28 @@ export const runCheckNow = createServerFn({ method: "POST" }).handler(async () =
   return runTenderCheck();
 });
 
+export interface SourceHealthRow {
+  source_key: string;
+  source_label: string;
+  source_url: string;
+  last_checked_at: string | null;
+  last_status: string;
+  candidate_count: number;
+  last_error: string | null;
+}
+
+export const getSourceHealth = createServerFn({ method: "GET" }).handler(async () => {
+  const sb = getServerClient();
+  const { data, error } = await sb
+    .from("tender_source_health")
+    .select(
+      "source_key, source_label, source_url, last_checked_at, last_status, candidate_count, last_error",
+    )
+    .order("source_label", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as SourceHealthRow[];
+});
+
 // Fire-and-forget: marks the run as "running" and hands the actual scrape+AI
 // work to Postgres pg_net so it completes even if the user closes/minimizes
 // the app. The endpoint it calls is the same CRON hook used by the scheduler.
