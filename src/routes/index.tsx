@@ -17,6 +17,7 @@ import {
   ExternalLink,
   Loader2,
   RefreshCw,
+  LogOut,
   Search,
   Settings as SettingsIcon,
   X,
@@ -139,6 +140,143 @@ function getSourceLabel(source: string, sourceUrl: string): string {
 }
 
 function Dashboard() {
+  const [gateLoading, setGateLoading] = useState(true);
+  const [gateStatus, setGateStatus] = useState<{ configured: boolean; authenticated: boolean } | null>(null);
+  const [accessToken, setAccessToken] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [gateError, setGateError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/admin/session", { cache: "no-store" })
+      .then(async (response) => {
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result) throw new Error("Unable to check administrator session");
+        if (active) setGateStatus(result);
+      })
+      .catch(() => {
+        if (active) setGateError("Tender Watch could not verify its administrator session. Refresh and try again.");
+      })
+      .finally(() => {
+        if (active) setGateLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  const signIn = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setGateError("");
+    try {
+      const response = await fetch("/api/admin/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: accessToken }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.error ?? "Administrator sign-in failed");
+      setGateStatus({ configured: true, authenticated: true });
+      setAccessToken("");
+    } catch (error) {
+      setGateError(error instanceof Error ? error.message : "Administrator sign-in failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const signOut = async () => {
+    try {
+      await fetch("/api/admin/session", { method: "DELETE" });
+    } finally {
+      setGateStatus({ configured: true, authenticated: false });
+      setAccessToken("");
+    }
+  };
+
+  if (gateLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4 text-sm text-muted-foreground">
+        Checking secure administrator session…
+      </div>
+    );
+  }
+
+  if (!gateStatus) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl">
+          <h1 className="text-xl font-semibold">Tender Watch</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{gateError || "Unable to verify access."}</p>
+          <Button className="mt-5 w-full" onClick={() => window.location.reload()}>Retry</Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!gateStatus.configured) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4 py-8">
+        <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-xl sm:p-8">
+          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <ShieldCheck className="h-5 w-5" />
+          </div>
+          <h1 className="text-2xl font-semibold tracking-tight">Secure Tender Watch</h1>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            Administrator access is not configured yet. In the existing Lovable project, open Settings → Secrets and add
+            <code className="mx-1 rounded bg-muted px-1.5 py-0.5">TENDER_WATCH_ADMIN_TOKEN</code>
+            with a randomly generated value of at least 32 characters. Do not put this value in GitHub or share it in chat.
+          </p>
+          <p className="mt-3 text-sm text-muted-foreground">
+            After the secret is saved and this change is published, reload Tender Watch and sign in with that token.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!gateStatus.authenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4 py-8">
+        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl sm:p-8">
+          <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <ShieldCheck className="h-6 w-6" />
+          </div>
+          <h1 className="text-2xl font-semibold tracking-tight">Tender Watch</h1>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            Administrator access is required to view tender records, source diagnostics, notification addresses, or settings.
+          </p>
+          <form className="mt-6 space-y-4" onSubmit={signIn}>
+            <div className="space-y-2">
+              <label htmlFor="tender-watch-admin-token" className="text-sm font-medium">Administrator access token</label>
+              <Input
+                id="tender-watch-admin-token"
+                type="password"
+                autoComplete="current-password"
+                value={accessToken}
+                onChange={(event) => setAccessToken(event.target.value)}
+                required
+                minLength={32}
+                maxLength={512}
+                placeholder="Enter your private access token"
+              />
+            </div>
+            {gateError && <p role="alert" className="text-sm text-destructive">{gateError}</p>}
+            <Button type="submit" className="w-full" disabled={submitting || accessToken.length < 32}>
+              {submitting ? "Signing in…" : "Unlock Tender Watch"}
+            </Button>
+          </form>
+          <p className="mt-4 text-xs leading-5 text-muted-foreground">
+            The token is validated on the server. A signed, HttpOnly session cookie is used; the token is not saved in browser storage.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return <TenderDashboard onLogout={signOut} />;
+}
+
+function TenderDashboard({ onLogout }: { onLogout: () => void }) {
   const qc = useQueryClient();
   const router = useRouter();
   const getSettingsFn = useServerFn(getSettings);
@@ -304,6 +442,15 @@ function Dashboard() {
             aria-label="Settings"
           >
             <SettingsIcon className="h-4 w-4" />
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label="Sign out"
+            title="Sign out"
+            onClick={onLogout}
+          >
+            <LogOut className="h-4 w-4" />
           </Button>
           <Button
             size="sm"
