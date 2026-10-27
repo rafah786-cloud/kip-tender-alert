@@ -37,22 +37,66 @@ function buildPortal(
   }));
 }
 
+const NIC_STATE_PORTALS: Array<{ key: string; label: string; base: string }> = [
+  { key: "assam", label: "Assam eTenders", base: "https://assamtenders.gov.in/nicgep/app" },
+  { key: "chandigarh", label: "Chandigarh eTenders", base: "https://etenders.chd.nic.in/nicgep/app" },
+  { key: "delhi", label: "Delhi Government Procurement", base: "https://govtprocurement.delhi.gov.in/nicgep/app" },
+  { key: "haryana", label: "Haryana eTenders", base: "https://etenders.hry.nic.in/nicgep/app" },
+  { key: "himachal", label: "Himachal Pradesh eTenders", base: "https://hptenders.gov.in/nicgep/app" },
+  { key: "jammu_kashmir", label: "Jammu & Kashmir eTenders", base: "https://jktenders.gov.in/nicgep/app" },
+  { key: "jharkhand", label: "Jharkhand eTenders", base: "https://jharkhandtenders.gov.in/nicgep/app" },
+  { key: "maharashtra", label: "Maharashtra eTenders", base: "https://mahatenders.gov.in/nicgep/app" },
+  { key: "odisha", label: "Odisha eTenders", base: "https://tenders.ori.nic.in/nicgep/app" },
+  { key: "rajasthan", label: "Rajasthan eProcurement", base: "https://eproc.rajasthan.gov.in/nicgep/app" },
+  { key: "sikkim", label: "Sikkim eTenders", base: "http://sikkimtender.gov.in/nicgep/app" },
+  { key: "tamil_nadu", label: "Tamil Nadu eTenders", base: "https://tntenders.gov.in/nicgep/app" },
+  { key: "tripura", label: "Tripura eTenders", base: "http://tripuratenders.gov.in/nicgep/app" },
+  { key: "uttar_pradesh", label: "Uttar Pradesh eTenders", base: "https://etender.up.nic.in/nicgep/app" },
+  { key: "uttarakhand", label: "Uttarakhand eTenders", base: "https://uktenders.gov.in/nicgep/app" },
+  { key: "west_bengal", label: "West Bengal eTenders", base: "https://wbtenders.gov.in/nicgep/app" },
+  { key: "punjab", label: "Punjab eTenders", base: "https://etender.punjabgovt.gov.in/nicgep/app" },
+  { key: "puducherry", label: "Puducherry eTenders", base: "https://pudutenders.gov.in/nicgep/app" },
+  { key: "lakshadweep", label: "Lakshadweep eTenders", base: "https://tendersutl.gov.in/nicgep/app" },
+  { key: "daman_diu", label: "Daman & Diu eTenders", base: "http://ddtenders.gov.in/nicgep/app" },
+  { key: "dadra_nagar_haveli", label: "Dadra & Nagar Haveli eTenders", base: "http://dnhtenders.gov.in/nicgep/app" },
+];
+
+const OTHER_GOVERNMENT_PORTALS: TenderSource[] = [
+  { key: "gem", label: "Government e-Marketplace (GeM) — All Bids", url: "https://bidplus.gem.gov.in/all-bids" },
+  { key: "gem_global", label: "GeM — Global Tender Bids", url: "https://bidplus-global.gem.gov.in/" },
+  { key: "bihar", label: "Bihar Tenders", url: "https://www.bihartenders.com/" },
+  { key: "goa_tenderwizard", label: "Goa TenderWizard", url: "https://www.tenderwizard.com/ROOTAPP/GOA.jsp?company=GOA" },
+  { key: "gujarat_nprocure", label: "Gujarat NProcure", url: "https://jmc.nprocure.com/asp/home/new_home_tenders.asp" },
+  { key: "madhya_pradesh", label: "Madhya Pradesh eProcurement", url: "https://www.mpeproc.gov.in/" },
+  { key: "karnataka", label: "Karnataka eProcurement", url: "https://eproc.karnataka.gov.in/" },
+  { key: "chhattisgarh", label: "Chhattisgarh Government Tenders", url: "https://cgstate.gov.in/en/tenders" },
+];
+
 export const TENDER_SOURCES: TenderSource[] = [
+  // Broad menu coverage on the three highest-priority portals.
   ...buildPortal(
     "cppp",
-    "Central Public Procurement Portal (eprocure.gov.in)",
+    "Central Public Procurement Portal",
     "https://eprocure.gov.in/eprocure/app",
   ),
   ...buildPortal(
     "etenders_central",
-    "eTenders India (etenders.gov.in)",
+    "eTenders India",
     "https://etenders.gov.in/eprocure/app",
   ),
   ...buildPortal(
     "kerala",
-    "Kerala eTenders (etenders.kerala.gov.in)",
+    "Kerala eTenders",
     "https://etenders.kerala.gov.in/nicgep/app",
   ),
+  // One active-tender listing per additional NIC e-procurement portal keeps
+  // national coverage broad without multiplying every portal by seven menus.
+  ...NIC_STATE_PORTALS.map((portal) => ({
+    key: `${portal.key}__latest_active`,
+    label: `${portal.label} — Latest Active Tenders`,
+    url: `${portal.base}?page=FrontEndLatestActiveTenders&service=page`,
+  })),
+  ...OTHER_GOVERNMENT_PORTALS,
 ];
 
 interface ScrapeOk {
