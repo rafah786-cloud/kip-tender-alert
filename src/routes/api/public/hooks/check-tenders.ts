@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { createFileRoute } from "@tanstack/react-router";
 import { runTenderCheck } from "@/lib/tenders.runner.server";
+import { getServerRuntimeEnv } from "@/lib/runtime-env.server";
 
 // Called by pg_cron. Accept a configured server CRON_SECRET or a dedicated
 // high-entropy token stored in Supabase Vault. Never accept tokens in query URLs.
@@ -9,11 +10,11 @@ async function checkAuth(request: Request): Promise<Response | null> {
   const provided = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
   if (!provided) return new Response("Unauthorized", { status: 401 });
 
-  const configuredSecret = process.env.CRON_SECRET;
+  const configuredSecret = getServerRuntimeEnv("CRON_SECRET");
   if (configuredSecret && provided === configuredSecret) return null;
 
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseUrl = getServerRuntimeEnv("SUPABASE_URL");
+  const serviceRoleKey = getServerRuntimeEnv("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !serviceRoleKey) {
     return new Response("Server not configured", { status: 503 });
   }
