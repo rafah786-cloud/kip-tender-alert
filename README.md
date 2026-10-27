@@ -21,6 +21,12 @@ Continue developing this project in the [Lovable editor](https://lovable.dev/pro
 - **Stay in sync**: every change made in Lovable is committed straight to this repository.
 - **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
 
+## Monitoring scope
+
+The scanner checks the Central Public Procurement Portal, eTenders India, Kerala eTenders, GeM bid listings, and configured state/UT procurement portals. Some portals can change routes or block automated access; use the in-app Portal Monitoring panel to see the latest scan status and errors for each source. A successful portal fetch is not proof that every tender on that site was indexed.
+
+The background schedule is intended to run every two hours. Configure the notification email in Settings to receive newly discovered matches. Browser notifications require browser permission and an active app session; email alerts are the option for background notifications.
+
 ## Development
 
 Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
