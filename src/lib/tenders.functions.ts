@@ -47,8 +47,14 @@ export interface Settings {
 }
 
 
-function getServerClient() {
-  return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+async function getServerClient() {
+  const { getServerRuntimeEnv } = await import("./runtime-env.server");
+  const supabaseUrl = getServerRuntimeEnv("SUPABASE_URL");
+  const serviceRoleKey = getServerRuntimeEnv("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("Tender Watch server configuration is missing Supabase runtime credentials.");
+  }
+  return createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
@@ -56,7 +62,7 @@ function getServerClient() {
 
 export const getSettings = createServerFn({ method: "GET" }).handler(async () => {
     await requireAdminAccess();
-  const sb = getServerClient();
+  const sb = await getServerClient();
   const { data, error } = await sb.from("settings").select("*").eq("id", 1).single();
   if (error) throw new Error(error.message);
   const notifyEmail = (data.notify_email as string | null) ?? null;
@@ -101,7 +107,7 @@ export const updateMatchSettings = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     await requireAdminAccess();
-    const sb = getServerClient();
+    const sb = await getServerClient();
     const patch: Record<string, unknown> = {};
     if (Array.isArray(data.keywords)) patch.keywords = cleanList(data.keywords);
     if (Array.isArray(data.exclude_keywords))
@@ -122,7 +128,7 @@ export const updateAiSettings = createServerFn({ method: "POST" })
   .inputValidator((d: { ai_min_confidence?: number; ai_include_maybe?: boolean }) => d)
   .handler(async ({ data }) => {
     await requireAdminAccess();
-    const sb = getServerClient();
+    const sb = await getServerClient();
     const patch: Record<string, unknown> = {};
     if (typeof data.ai_min_confidence === "number" && Number.isFinite(data.ai_min_confidence)) {
       const v = Math.min(1, Math.max(0, data.ai_min_confidence));
@@ -142,7 +148,7 @@ export const updateKeywords = createServerFn({ method: "POST" })
   .inputValidator((d: { keywords: string[] }) => d)
   .handler(async ({ data }) => {
     await requireAdminAccess();
-    const sb = getServerClient();
+    const sb = await getServerClient();
     const cleaned = cleanList(data.keywords);
     const { error } = await sb.from("settings").update({ keywords: cleaned }).eq("id", 1);
     if (error) throw new Error(error.message);
@@ -154,7 +160,7 @@ export const updateNotifyEmail = createServerFn({ method: "POST" })
   .inputValidator((d: { email: string | null }) => d)
   .handler(async ({ data }) => {
     await requireAdminAccess();
-    const sb = getServerClient();
+    const sb = await getServerClient();
     const email = data.email?.trim() || null;
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       throw new Error("Invalid email address");
@@ -174,7 +180,7 @@ export const updateNotifyEmail = createServerFn({ method: "POST" })
 
 export const listTenders = createServerFn({ method: "GET" }).handler(async () => {
     await requireAdminAccess();
-  const sb = getServerClient();
+  const sb = await getServerClient();
   const { data, error } = await sb
     .from("tenders")
     .select("*")
@@ -188,7 +194,7 @@ export const markSeen = createServerFn({ method: "POST" })
   .inputValidator((d: { id: string; seen: boolean }) => d)
   .handler(async ({ data }) => {
     await requireAdminAccess();
-    const sb = getServerClient();
+    const sb = await getServerClient();
     const { error } = await sb.from("tenders").update({ seen: data.seen }).eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
@@ -196,7 +202,7 @@ export const markSeen = createServerFn({ method: "POST" })
 
 export const markAllSeen = createServerFn({ method: "POST" }).handler(async () => {
     await requireAdminAccess();
-  const sb = getServerClient();
+  const sb = await getServerClient();
   const { error } = await sb.from("tenders").update({ seen: true }).eq("seen", false);
   if (error) throw new Error(error.message);
   return { ok: true };
@@ -214,7 +220,7 @@ export interface TenderSourceHealth {
 
 export const listSourceHealth = createServerFn({ method: "GET" }).handler(async () => {
     await requireAdminAccess();
-  const sb = getServerClient();
+  const sb = await getServerClient();
   const { data, error } = await sb
     .from("tender_source_health")
     .select("source_key, source_label, source_url, last_checked_at, last_status, candidate_count, last_error")
@@ -236,7 +242,7 @@ export const runCheckNow = createServerFn({ method: "POST" }).handler(async () =
 export const startCheckInBackground = createServerFn({ method: "POST" }).handler(
   async () => {
     await requireAdminAccess();
-    const sb = getServerClient();
+    const sb = await getServerClient();
     const { getServerRuntimeEnv } = await import("./runtime-env.server");
     if (!getServerRuntimeEnv("FIRECRAWL_API_KEY")) {
       const message =
