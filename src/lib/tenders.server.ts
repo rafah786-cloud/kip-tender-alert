@@ -9,10 +9,8 @@ export interface TenderSource {
   url: string;
 }
 
-// Each portal exposes several menu pages (Latest Active Tenders, Tenders by
-// Location, Tenders by Organisation, Tenders by Classification, Tenders by
-// Value, MSE tenders, Archived / Cancelled). We hit each menu so the AI sees
-// listings across all classifications, not just the homepage's "latest" list.
+// Keep public discovery focused on active procurement opportunities. Cancelled and archived listings are deliberately excluded to reduce stale alerts.
+// Other public NIC portal menus help catch active items that are not visible on the front-page feed.
 type PortalMenu = { key: string; label: string; path: string };
 
 const NIC_MENUS: PortalMenu[] = [
@@ -22,7 +20,6 @@ const NIC_MENUS: PortalMenu[] = [
   { key: "by_classification", label: "Tenders by Classification", path: "FrontEndTendersByClassification" },
   { key: "by_value", label: "Tenders by Value", path: "FrontEndAdvancedSearch" },
   { key: "mse_tenders", label: "MSE Tenders", path: "FrontEndMSETendersView" },
-  { key: "cancelled", label: "Cancelled Tenders", path: "FrontEndCancelledTenders" },
 ];
 
 function buildPortal(
