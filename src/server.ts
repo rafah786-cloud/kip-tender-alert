@@ -35,6 +35,7 @@ function exposeRuntimeSecrets(env: unknown): void {
     "FIRECRAWL_API_KEY",
     "LOVABLE_API_KEY",
     "CRON_SECRET",
+    "TENDER_WATCH_ADMIN_TOKEN",
     "SUPABASE_URL",
     "SUPABASE_SERVICE_ROLE_KEY",
     "VITE_SUPABASE_URL",
