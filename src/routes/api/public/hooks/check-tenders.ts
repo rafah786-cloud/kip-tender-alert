@@ -1,28 +1,44 @@
+import { createClient } from "@supabase/supabase-js";
 import { createFileRoute } from "@tanstack/react-router";
 import { runTenderCheck } from "@/lib/tenders.runner.server";
 
-// Called by pg_cron periodically. Requires CRON_SECRET shared secret to
-// prevent unauthenticated visitors from triggering the paid scrape+AI pipeline.
-function checkAuth(request: Request): Response | null {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
+// Called by pg_cron. Accept a configured server CRON_SECRET or a dedicated
+// high-entropy token stored in Supabase Vault. Never accept tokens in query URLs.
+async function checkAuth(request: Request): Promise<Response | null> {
+  const header = request.headers.get("authorization") ?? "";
+  const provided = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
+  if (!provided) return new Response("Unauthorized", { status: 401 });
+
+  const configuredSecret = process.env.CRON_SECRET;
+  if (configuredSecret && provided === configuredSecret) return null;
+
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
     return new Response("Server not configured", { status: 503 });
   }
-  const header = request.headers.get("authorization") ?? "";
-  const provided = header.startsWith("Bearer ")
-    ? header.slice("Bearer ".length)
-    : new URL(request.url).searchParams.get("secret") ?? "";
-  if (provided !== secret) {
-    return new Response("Unauthorized", { status: 401 });
+
+  try {
+    const sb = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data, error } = await sb.rpc("is_valid_tender_cron_secret", {
+      candidate_secret: provided,
+    });
+    if (!error && data === true) return null;
+  } catch (error) {
+    console.error("[check-tenders] scheduler-token validation failed", error);
+    return new Response("Server not configured", { status: 503 });
   }
-  return null;
+
+  return new Response("Unauthorized", { status: 401 });
 }
 
 export const Route = createFileRoute("/api/public/hooks/check-tenders")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const unauth = checkAuth(request);
+        const unauth = await checkAuth(request);
         if (unauth) return unauth;
         try {
           const result = await runTenderCheck();
@@ -33,7 +49,7 @@ export const Route = createFileRoute("/api/public/hooks/check-tenders")({
         }
       },
       GET: async ({ request }) => {
-        const unauth = checkAuth(request);
+        const unauth = await checkAuth(request);
         if (unauth) return unauth;
         try {
           const result = await runTenderCheck();
