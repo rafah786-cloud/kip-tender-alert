@@ -52,6 +52,46 @@ $$;
 
 REVOKE ALL ON FUNCTION public.is_valid_tender_cron_secret(text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.is_valid_tender_cron_secret(text) TO service_role;
+
+-- The manual Check button uses the same Vault token as scheduled runs, instead
+-- of depending on a deployment environment variable or passing a credential
+-- from the caller.
+CREATE OR REPLACE FUNCTION public.trigger_tender_check(secret text)
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions, vault
+AS $function$
+DECLARE
+  req_id bigint;
+  scheduler_token text;
+BEGIN
+  SELECT decrypted_secret
+    INTO scheduler_token
+  FROM vault.decrypted_secrets
+  WHERE name = 'tender_watch_cron_token';
+
+  IF scheduler_token IS NULL THEN
+    RAISE EXCEPTION 'Tender scanner token is missing from Supabase Vault';
+  END IF;
+
+  SELECT net.http_post(
+    url := 'https://kip-tender-alert.lovable.app/api/public/hooks/check-tenders',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || scheduler_token
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 300000
+  ) INTO req_id;
+
+  RETURN req_id;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.trigger_tender_check(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.trigger_tender_check(text) TO service_role;
+
  
 -- Replace the stale/dev scheduler URL and unauthenticated anon-key header with
 -- the production site and dedicated Vault token. The token is not embedded in
