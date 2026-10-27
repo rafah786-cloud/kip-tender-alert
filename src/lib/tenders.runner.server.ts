@@ -107,13 +107,32 @@ export async function runTenderCheck(): Promise<RunResult> {
     }
   }
 
-  // AI classification.
+  // Avoid spending model/document-analysis work on the same saved opportunities
+  // every two hours. Chunk the lookup so PostgREST URL limits stay reasonable.
+  const existingFingerprints = new Set<string>();
+  const fingerprints = [...new Set(allRows.map((row) => row.fingerprint))];
+  for (let offset = 0; offset < fingerprints.length; offset += 150) {
+    const batch = fingerprints.slice(offset, offset + 150);
+    const { data, error } = await sb
+      .from("tenders")
+      .select("fingerprint")
+      .in("fingerprint", batch);
+    if (error) {
+      throw new Error(`Unable to check previously discovered tenders: ${error.message}`);
+    }
+    for (const row of data ?? []) {
+      existingFingerprints.add((row as { fingerprint: string }).fingerprint);
+    }
+  }
+  const freshRows = allRows.filter((row) => !existingFingerprints.has(row.fingerprint));
+
+  // AI classification is only run on newly discovered candidates.
   let verdicts: Awaited<ReturnType<typeof classifyTenders>> = [];
   let aiError = "";
-  if (allRows.length > 0) {
+  if (freshRows.length > 0) {
     try {
       verdicts = await classifyTenders(
-        allRows.map((r) => ({
+        freshRows.map((r) => ({
           id: r.fingerprint,
           source_label: r.source_label,
           text: `${r.title}\n${r.organisation ?? ""}\n${r.raw_excerpt}`,
@@ -147,7 +166,7 @@ export async function runTenderCheck(): Promise<RunResult> {
     stage1: (typeof verdicts)[number];
     deep?: Awaited<ReturnType<typeof deepClassifyTender>>;
   };
-  const candidates: DeepRow[] = allRows.map((row) => ({
+  const candidates: DeepRow[] = freshRows.map((row) => ({
     ...row,
     stage1: verdictMap.get(row.fingerprint) ?? {
       id: row.fingerprint,
@@ -322,7 +341,7 @@ export async function runTenderCheck(): Promise<RunResult> {
   const status =
     errored.length === results.length ? "error" : errored.length > 0 ? "partial" : "ok";
   const message =
-    `Scanned ${results.length} source pages; found ${allRows.length} keyword-matched candidate rows → deep-audited BOQ/contract docs for ${toDeep.length} → ${totalKept} kept at ≥${Math.round(minConfidence * 100)}% confidence${includeMaybe ? " (incl. maybe)" : " (yes only)"} (${inserted} new).` +
+    `Scanned ${results.length} source pages; ${allRows.length} keyword matches (${freshRows.length} not previously saved) → deep-audited BOQ/contract docs for ${toDeep.length} → ${totalKept} kept at ≥${Math.round(minConfidence * 100)}% confidence${includeMaybe ? " (incl. maybe)" : " (yes only)"} (${inserted} new).` +
     (aiError ? ` Stage-1 error: ${aiError}.` : "") +
     (docCheckErr ? ` Doc-check error: ${docCheckErr}.` : "") +
     emailNote +
