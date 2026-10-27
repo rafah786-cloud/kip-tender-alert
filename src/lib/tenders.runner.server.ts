@@ -111,9 +111,25 @@ export async function runTenderCheck(): Promise<RunResult> {
       reason: "stage-1 skipped",
     },
   }));
+  // Skip repeated AI review: tenders already saved in the database were
+  // audited when first seen — don't spend Firecrawl/AI credits on them again.
+  const fingerprints = candidates.map((c) => c.fingerprint);
+  const knownFps = new Set<string>();
+  if (fingerprints.length > 0) {
+    const { data: existing } = await sb
+      .from("tenders")
+      .select("fingerprint")
+      .in("fingerprint", fingerprints);
+    for (const row of existing ?? []) {
+      knownFps.add((row as { fingerprint: string }).fingerprint);
+    }
+  }
+  const fresh = candidates.filter((c) => !knownFps.has(c.fingerprint));
+  const skippedKnown = candidates.length - fresh.length;
+
   // Cap per run to keep cost/latency bounded (deep audit downloads PDFs).
   const DEEP_CAP = 40;
-  const toDeep = candidates.slice(0, DEEP_CAP);
+  const toDeep = fresh.slice(0, DEEP_CAP);
 
   for (const c of toDeep) {
     if (!c.tender_url) {
@@ -221,7 +237,7 @@ export async function runTenderCheck(): Promise<RunResult> {
   if (inserted > 0 && notifyEmail && notifyEmail.includes("@")) {
     try {
       const { sendTenderEmail } = await import("./email-send.server");
-      const dashboardUrl = process.env.SITE_URL || "https://tenderwatch.lovable.app";
+      const dashboardUrl = process.env.SITE_URL || "https://kip-tender-alert.lovable.app";
       const result = await sendTenderEmail({
         templateName: "tender-alert",
         recipientEmail: notifyEmail,
