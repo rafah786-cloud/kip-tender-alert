@@ -91,6 +91,9 @@ const OTHER_GOVERNMENT_PORTALS: TenderSource[] = [
   { key: "ntpc", label: "NTPC eTenders", url: "https://eprocurentpc.nic.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page" },
   { key: "beml", label: "BEML eProcurement", url: "https://eprocurebeml.nic.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page" },
   { key: "pmgsy", label: "PMGSY eProcurement", url: "https://www.pmgsytenders.gov.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page" },
+  { key: "andhra_pradesh", label: "Andhra Pradesh eProcurement", url: "https://apeprocurement.gov.in/" },
+  { key: "telangana", label: "Telangana State eProcurement", url: "https://tender.telangana.gov.in/login.html" },
+  { key: "chhattisgarh", label: "Chhattisgarh eProcurement", url: "https://cgeprocurement.gov.in/" },
 ];
 
 export const TENDER_SOURCES: TenderSource[] = [
