@@ -46,7 +46,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Auto-monitors central & Kerala government e-procurement portals for mattress, bed and bedding supply tenders.",
+          "Monitors GeM, central, state and union-territory procurement portals for mattress, bed and bedding supply tenders.",
       },
       { name: "robots", content: "noindex,nofollow" },
     ],
@@ -909,8 +909,8 @@ function EmptyState({ onCheck, loading }: { onCheck: () => void; loading: boolea
       </div>
       <h2 className="text-sm font-semibold">No matches yet</h2>
       <p className="mx-auto max-w-sm text-xs text-muted-foreground">
-        Tap Check to scan eprocure.gov.in, etenders.gov.in and etenders.kerala.gov.in right now.
-        Otherwise it runs every 2 hours automatically.
+        Tap Check to scan GeM, central, state and union-territory procurement portals.
+        Scheduled checks are designed to run every two hours; use Portal monitoring to see which sources are reachable.
       </p>
       <Button size="sm" onClick={onCheck} disabled={loading} className="gap-1.5">
         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
