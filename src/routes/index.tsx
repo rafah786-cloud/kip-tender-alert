@@ -259,7 +259,7 @@ function Dashboard() {
           />
         )}
 
-
+        <PortalHealthPanel rows={healthQ.data ?? []} loading={healthQ.isPending} />
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex rounded-md border border-border p-0.5">
