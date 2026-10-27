@@ -22,7 +22,7 @@ export async function runTenderCheck(): Promise<RunResult> {
   const sb = getServerClient();
   const { data: settings, error: sErr } = await sb
     .from("settings")
-    .select("notify_email, ai_min_confidence, ai_include_maybe")
+    .select("notify_email, ai_min_confidence, ai_include_maybe, keywords, exclude_keywords, match_mode")
     .eq("id", 1)
     .single();
   if (sErr) throw new Error(sErr.message);
@@ -34,8 +34,34 @@ export async function runTenderCheck(): Promise<RunResult> {
     (settings as { ai_include_maybe?: boolean } | null)?.ai_include_maybe ?? false,
   );
 
-  // Scrape ALL rows from each portal (no keyword pre-filter).
-  const { results } = await scrapeAllSources();
+  // Use the saved keyword rules before AI processing so the deep-document
+  // audit is spent on likely mattress/bedding opportunities, not every tender.
+  const settingsRow = settings as {
+    keywords?: string[] | null;
+    exclude_keywords?: string[] | null;
+    match_mode?: string | null;
+  };
+  const defaultKeywords = [
+    "mattress", "mattresses", "foam mattress", "spring mattress", "coir mattress",
+    "rubberised coir", "rubberized coir", "hospital mattress", "medical mattress",
+    "orthopaedic mattress", "orthopedic mattress", "latex mattress", "folding mattress",
+    "mattress cover", "mattress protector", "pillow", "pillows", "bedding", "bed linen",
+    "bedsheet", "bed sheet", "bedroll", "bed roll", "sleeping mat", "sleeping mattress",
+    "cot mattress", "patient mattress", "pressure relief mattress",
+  ];
+  const keywords = Array.isArray(settingsRow.keywords) && settingsRow.keywords.length
+    ? settingsRow.keywords.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+    : defaultKeywords;
+  const excludeKeywords = Array.isArray(settingsRow.exclude_keywords)
+    ? settingsRow.exclude_keywords.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+    : [];
+  const rawMode = settingsRow.match_mode ?? "any";
+  const matchMode = rawMode === "all" || rawMode === "phrase" ? rawMode : "any";
+  const { results } = await scrapeAllSources({
+    include: keywords,
+    exclude: excludeKeywords,
+    mode: matchMode,
+  });
 
   // Flatten rows for AI classification.
   type Row = (typeof results)[number]["matches"][number] & {
@@ -111,9 +137,42 @@ export async function runTenderCheck(): Promise<RunResult> {
       reason: "stage-1 skipped",
     },
   }));
-  // Cap per run to keep cost/latency bounded (deep audit downloads PDFs).
+  // Stage 1 is used to prioritise likely mattress/bedding opportunities. Do not
+  // send obvious "no" results into costly document/PDF analysis. If stage-1 is
+  // unavailable, missing classifications safely remain "maybe".
+  const eligibleCandidates = candidates.filter((c) => c.stage1.verdict !== "no");
+  const candidateQueues = new Map<string, DeepRow[]>();
+  for (const candidate of eligibleCandidates) {
+    const queue = candidateQueues.get(candidate.source_key) ?? [];
+    queue.push(candidate);
+    candidateQueues.set(candidate.source_key, queue);
+  }
+  for (const queue of candidateQueues.values()) {
+    queue.sort((a, b) => {
+      const rank = (v: string) => (v === "yes" ? 2 : v === "maybe" ? 1 : 0);
+      return rank(b.stage1.verdict) - rank(a.stage1.verdict)
+        || b.stage1.confidence - a.stage1.confidence;
+    });
+  }
+  // Cap per run to keep cost/latency bounded (deep audit downloads PDFs). Round-
+  // robin across portals so a busy central source cannot consume the whole cap.
   const DEEP_CAP = 40;
-  const toDeep = candidates.slice(0, DEEP_CAP);
+  const queues = [...candidateQueues.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, queue]) => queue);
+  const toDeep: DeepRow[] = [];
+  while (toDeep.length < DEEP_CAP) {
+    let added = false;
+    for (const queue of queues) {
+      const next = queue.shift();
+      if (next) {
+        toDeep.push(next);
+        added = true;
+        if (toDeep.length >= DEEP_CAP) break;
+      }
+    }
+    if (!added) break;
+  }
 
   for (const c of toDeep) {
     if (!c.tender_url) {
@@ -244,7 +303,7 @@ export async function runTenderCheck(): Promise<RunResult> {
   const status =
     errored.length === results.length ? "error" : errored.length > 0 ? "partial" : "ok";
   const message =
-    `Scanned ${allRows.length} tenders → deep-audited BOQ/contract docs for ${toDeep.length} → ${totalKept} kept at ≥${Math.round(minConfidence * 100)}% confidence${includeMaybe ? " (incl. maybe)" : " (yes only)"} (${inserted} new).` +
+    `Scanned ${results.length} source pages; found ${allRows.length} keyword-matched candidate rows → deep-audited BOQ/contract docs for ${toDeep.length} → ${totalKept} kept at ≥${Math.round(minConfidence * 100)}% confidence${includeMaybe ? " (incl. maybe)" : " (yes only)"} (${inserted} new).` +
     (aiError ? ` Stage-1 error: ${aiError}.` : "") +
     (docCheckErr ? ` Doc-check error: ${docCheckErr}.` : "") +
     emailNote +
