@@ -1,7 +1,6 @@
 // Server-only helpers for scraping Indian government tender portals via Firecrawl.
 // Never import from client-reachable code.
-
-const FIRECRAWL_GATEWAY = "https://connector-gateway.lovable.dev/firecrawl";
+import { getServerRuntimeEnv } from "./runtime-env.server";
 
 export interface TenderSource {
   key: string;
@@ -132,13 +131,23 @@ interface ScrapeErr {
   error: string;
 }
 
+const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
+
 async function firecrawlScrape(url: string): Promise<ScrapeOk | ScrapeErr> {
-  const fcKey = process.env.FIRECRAWL_API_KEY;
+  // Read from the server runtime binding first, with process.env as fallback.
+  // Lovable's deployed Nitro/Cloudflare runtime does not always permit writes to
+  // process.env, so reading process.env alone can falsely report a missing key.
+  const fcKey = getServerRuntimeEnv("FIRECRAWL_API_KEY");
   if (!fcKey) {
-    return { ok: false, error: "Missing FIRECRAWL_API_KEY" };
+    return {
+      ok: false,
+      error:
+        "FIRECRAWL_API_KEY is not available to the deployed server runtime. Verify the Lovable project secret is saved for this deployment, then sync and publish the latest source.",
+    };
   }
+
   try {
-    const res = await fetch(`https://api.firecrawl.dev/v2/scrape`, {
+    const res = await fetch(FIRECRAWL_SCRAPE_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -150,16 +159,50 @@ async function firecrawlScrape(url: string): Promise<ScrapeOk | ScrapeErr> {
         onlyMainContent: true,
         waitFor: 2500,
       }),
+      signal: AbortSignal.timeout(45_000),
     });
-    const json: unknown = await res.json().catch(() => null);
-    if (!res.ok) {
-      return { ok: false, error: `Firecrawl ${res.status}: ${JSON.stringify(json)?.slice(0, 300)}` };
+
+    const responseText = await res.text().catch(() => "");
+    let json: unknown = null;
+    try {
+      json = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      json = { message: responseText.slice(0, 200) };
     }
-    const obj = json as { data?: { markdown?: string }; markdown?: string };
-    const md = obj?.data?.markdown ?? obj?.markdown ?? "";
-    return { ok: true, markdown: md };
-  } catch (e) {
-    return { ok: false, error: String(e instanceof Error ? e.message : e) };
+
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        return {
+          ok: false,
+          error: `Firecrawl authentication failed (${res.status}). Check that FIRECRAWL_API_KEY is valid and available to this deployment.`,
+        };
+      }
+      if (res.status === 402) {
+        return { ok: false, error: "Firecrawl credits/quota exhausted (402). Check your Firecrawl account usage." };
+      }
+      if (res.status === 429) {
+        return { ok: false, error: "Firecrawl rate limit reached (429). Retry after the account cooldown." };
+      }
+      return {
+        ok: false,
+        error: `Firecrawl request failed (${res.status}): ${JSON.stringify(json).slice(0, 300)}`,
+      };
+    }
+
+    const obj = json as { data?: { markdown?: string }; markdown?: string; success?: boolean };
+    const markdown = obj?.data?.markdown ?? obj?.markdown ?? "";
+    if (obj?.success === false || typeof markdown !== "string" || markdown.length === 0) {
+      return { ok: false, error: "Firecrawl returned no markdown content for this page." };
+    }
+    return { ok: true, markdown };
+  } catch (error) {
+    const reason =
+      error instanceof Error && error.name === "TimeoutError"
+        ? "Firecrawl request timed out after 45 seconds."
+        : error instanceof Error
+          ? error.message
+          : String(error);
+    return { ok: false, error: reason };
   }
 }
 
