@@ -33,7 +33,7 @@ WHERE id = 1
   ];
 
 -- Validates a high-entropy scheduler token without exposing the Vault secret to
--- callers. The route still checks its configured CRON_SECRET for manual calls.
+-- callers. The route accepts either configured CRON_SECRET or this Vault token.
 CREATE OR REPLACE FUNCTION public.is_valid_tender_cron_secret(candidate_secret text)
 RETURNS boolean
 LANGUAGE sql
