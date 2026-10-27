@@ -59,6 +59,51 @@ function relTime(iso: string | null | undefined): string {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
+const SOURCE_DISPLAY_NAMES: Record<string, string> = {
+  cppp: "CPPP",
+  etenders_central: "eTenders India",
+  kerala: "Kerala",
+  assam: "Assam",
+  chandigarh: "Chandigarh",
+  delhi: "Delhi",
+  haryana: "Haryana",
+  himachal: "Himachal Pradesh",
+  jammu_kashmir: "Jammu & Kashmir",
+  jharkhand: "Jharkhand",
+  maharashtra: "Maharashtra",
+  odisha: "Odisha",
+  rajasthan: "Rajasthan",
+  sikkim: "Sikkim",
+  tamil_nadu: "Tamil Nadu",
+  tripura: "Tripura",
+  uttar_pradesh: "Uttar Pradesh",
+  uttarakhand: "Uttarakhand",
+  west_bengal: "West Bengal",
+  punjab: "Punjab",
+  puducherry: "Puducherry",
+  lakshadweep: "Lakshadweep",
+  daman_diu: "Daman & Diu",
+  dadra_nagar_haveli: "Dadra & Nagar Haveli",
+  gem: "GeM",
+  gem_global: "GeM Global",
+  bihar: "Bihar",
+  goa_tenderwizard: "Goa",
+  gujarat_nprocure: "Gujarat",
+  madhya_pradesh: "Madhya Pradesh",
+  karnataka: "Karnataka",
+  chhattisgarh: "Chhattisgarh",
+};
+
+function getSourceLabel(source: string, sourceUrl: string): string {
+  const prefix = source.split("__")[0];
+  if (SOURCE_DISPLAY_NAMES[prefix]) return SOURCE_DISPLAY_NAMES[prefix];
+  try {
+    return new URL(sourceUrl).hostname.replace(/^www\./, "");
+  } catch {
+    return prefix.replace(/_/g, " ");
+  }
+}
+
 function Dashboard() {
   const qc = useQueryClient();
   const router = useRouter();
@@ -321,11 +366,7 @@ function Dashboard() {
                         <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-label="new" />
                       )}
                       <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">
-                        {t.source === "cppp"
-                          ? "CPPP"
-                          : t.source === "etenders_central"
-                            ? "eTenders India"
-                            : "Kerala"}
+                        {getSourceLabel(t.source, t.source_url)}
                       </Badge>
                       {t.ai_verdict && (
                         <Badge
