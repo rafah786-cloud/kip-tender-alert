@@ -323,6 +323,21 @@ function Dashboard() {
       </header>
 
       <main className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+        {settingsQ.data?.last_run_status === "error" && (
+          <div
+            role="alert"
+            className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm"
+          >
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+            <div>
+              <p className="font-semibold text-foreground">Tender scan failed</p>
+              <p className="mt-1 text-muted-foreground">
+                Source checks did not complete successfully. This does not mean there are no matching tenders.
+                Check the source errors and configuration, then run the scan again.
+              </p>
+            </div>
+          </div>
+        )}
         <section className="overview-hero relative overflow-hidden rounded-3xl p-6 text-white shadow-2xl shadow-slate-900/10 sm:p-8">
           <div className="hero-orb hero-orb-one" aria-hidden="true" />
           <div className="hero-orb hero-orb-two" aria-hidden="true" />
