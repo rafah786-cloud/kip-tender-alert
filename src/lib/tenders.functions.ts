@@ -1,6 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { createClient } from "@supabase/supabase-js";
 
+// Sensitive single-user settings and tender records are only available to the administrator.
+async function requireAdminAccess(): Promise<void> {
+  const { assertAdminSession } = await import("./admin-session.server");
+  await assertAdminSession();
+}
+
 
 export interface TenderRow {
   id: string;
@@ -49,6 +55,7 @@ function getServerClient() {
 
 
 export const getSettings = createServerFn({ method: "GET" }).handler(async () => {
+    await requireAdminAccess();
   const sb = getServerClient();
   const { data, error } = await sb.from("settings").select("*").eq("id", 1).single();
   if (error) throw new Error(error.message);
@@ -93,6 +100,7 @@ export const updateMatchSettings = createServerFn({ method: "POST" })
     (d: { keywords?: string[]; exclude_keywords?: string[]; match_mode?: MatchMode }) => d,
   )
   .handler(async ({ data }) => {
+    await requireAdminAccess();
     const sb = getServerClient();
     const patch: Record<string, unknown> = {};
     if (Array.isArray(data.keywords)) patch.keywords = cleanList(data.keywords);
@@ -113,6 +121,7 @@ export const updateMatchSettings = createServerFn({ method: "POST" })
 export const updateAiSettings = createServerFn({ method: "POST" })
   .inputValidator((d: { ai_min_confidence?: number; ai_include_maybe?: boolean }) => d)
   .handler(async ({ data }) => {
+    await requireAdminAccess();
     const sb = getServerClient();
     const patch: Record<string, unknown> = {};
     if (typeof data.ai_min_confidence === "number" && Number.isFinite(data.ai_min_confidence)) {
@@ -132,6 +141,7 @@ export const updateAiSettings = createServerFn({ method: "POST" })
 export const updateKeywords = createServerFn({ method: "POST" })
   .inputValidator((d: { keywords: string[] }) => d)
   .handler(async ({ data }) => {
+    await requireAdminAccess();
     const sb = getServerClient();
     const cleaned = cleanList(data.keywords);
     const { error } = await sb.from("settings").update({ keywords: cleaned }).eq("id", 1);
@@ -143,6 +153,7 @@ export const updateKeywords = createServerFn({ method: "POST" })
 export const updateNotifyEmail = createServerFn({ method: "POST" })
   .inputValidator((d: { email: string | null }) => d)
   .handler(async ({ data }) => {
+    await requireAdminAccess();
     const sb = getServerClient();
     const email = data.email?.trim() || null;
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -162,6 +173,7 @@ export const updateNotifyEmail = createServerFn({ method: "POST" })
   });
 
 export const listTenders = createServerFn({ method: "GET" }).handler(async () => {
+    await requireAdminAccess();
   const sb = getServerClient();
   const { data, error } = await sb
     .from("tenders")
@@ -175,6 +187,7 @@ export const listTenders = createServerFn({ method: "GET" }).handler(async () =>
 export const markSeen = createServerFn({ method: "POST" })
   .inputValidator((d: { id: string; seen: boolean }) => d)
   .handler(async ({ data }) => {
+    await requireAdminAccess();
     const sb = getServerClient();
     const { error } = await sb.from("tenders").update({ seen: data.seen }).eq("id", data.id);
     if (error) throw new Error(error.message);
@@ -182,6 +195,7 @@ export const markSeen = createServerFn({ method: "POST" })
   });
 
 export const markAllSeen = createServerFn({ method: "POST" }).handler(async () => {
+    await requireAdminAccess();
   const sb = getServerClient();
   const { error } = await sb.from("tenders").update({ seen: true }).eq("seen", false);
   if (error) throw new Error(error.message);
@@ -199,6 +213,7 @@ export interface TenderSourceHealth {
 }
 
 export const listSourceHealth = createServerFn({ method: "GET" }).handler(async () => {
+    await requireAdminAccess();
   const sb = getServerClient();
   const { data, error } = await sb
     .from("tender_source_health")
@@ -210,6 +225,7 @@ export const listSourceHealth = createServerFn({ method: "GET" }).handler(async 
 });
 
 export const runCheckNow = createServerFn({ method: "POST" }).handler(async () => {
+    await requireAdminAccess();
   const { runTenderCheck } = await import("./tenders.runner.server");
   return runTenderCheck();
 });
@@ -219,6 +235,7 @@ export const runCheckNow = createServerFn({ method: "POST" }).handler(async () =
 // the app. The endpoint it calls is the same CRON hook used by the scheduler.
 export const startCheckInBackground = createServerFn({ method: "POST" }).handler(
   async () => {
+    await requireAdminAccess();
     const sb = getServerClient();
     // The database trigger reads the dedicated scanner token from Vault.
     // Keep the optional legacy env value only for compatibility with older schemas.
