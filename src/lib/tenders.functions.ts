@@ -220,8 +220,9 @@ export const runCheckNow = createServerFn({ method: "POST" }).handler(async () =
 export const startCheckInBackground = createServerFn({ method: "POST" }).handler(
   async () => {
     const sb = getServerClient();
-    const secret = process.env.CRON_SECRET;
-    if (!secret) throw new Error("CRON_SECRET not configured");
+    // The database trigger reads the dedicated scanner token from Vault.
+    // Keep the optional legacy env value only for compatibility with older schemas.
+    const secret = process.env.CRON_SECRET ?? "";
 
     // If a run is already in progress, don't queue another one.
     const { data: cur } = await sb
