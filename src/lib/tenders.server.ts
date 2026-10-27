@@ -53,6 +53,23 @@ export const TENDER_SOURCES: TenderSource[] = [
     "Kerala eTenders (etenders.kerala.gov.in)",
     "https://etenders.kerala.gov.in/nicgep/app",
   ),
+  // Ministry of Defence eProcurement (same NIC platform, separate instance).
+  ...buildPortal(
+    "defproc",
+    "Defence eProcurement (defproc.gov.in)",
+    "https://defproc.gov.in/nicgep/app",
+  ),
+  // Government e-Marketplace — public bid listing pages (not NIC menus).
+  {
+    key: "gem__latest_bids",
+    label: "GeM — Latest Bids (gem.gov.in)",
+    url: "https://bidplus.gem.gov.in/all-bids",
+  },
+  {
+    key: "gem__bid_lists",
+    label: "GeM — Bid Lists (gem.gov.in)",
+    url: "https://bidplus.gem.gov.in/bidlists",
+  },
 ];
 
 interface ScrapeOk {
