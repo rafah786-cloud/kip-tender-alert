@@ -11,6 +11,9 @@ import {
   CheckCircle2,
   AlertTriangle,
   Globe,
+  Activity,
+  CalendarClock,
+  ShieldCheck,
   ExternalLink,
   Loader2,
   RefreshCw,
@@ -42,7 +45,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Tender Watch — Mattress & Bed supply tenders" },
+      { title: "Tender Finder Pro — Government Supply Tenders" },
       {
         name: "description",
         content:
@@ -231,11 +234,16 @@ function Dashboard() {
   const markMut = useMutation({
     mutationFn: (v: { id: string; seen: boolean }) => markSeenFn({ data: v }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tenders"] }),
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not update tender status"),
   });
 
   const markAllMut = useMutation({
     mutationFn: () => markAllSeenFn(),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tenders"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tenders"] });
+      toast.success("All tenders marked as read");
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not mark tenders as read"),
   });
 
   const filtered = useMemo(() => {
@@ -244,24 +252,35 @@ function Dashboard() {
       .filter((t) => (filter === "new" ? !t.seen : true))
       .filter((t) =>
         search.trim()
-          ? (t.title + " " + (t.organisation ?? "")).toLowerCase().includes(search.toLowerCase())
+          ? (t.title + " " + (t.organisation ?? "") + " " + t.source + " " + t.matched_keywords.join(" ")).toLowerCase().includes(search.toLowerCase())
           : true,
       );
   }, [tendersQ.data, filter, search]);
 
   const newCount = (tendersQ.data ?? []).filter((t) => !t.seen).length;
+  const tenderCount = (tendersQ.data ?? []).length;
+  const statusText = isRunning
+    ? "Scan in progress"
+    : settingsQ.data?.last_run_status === "ok"
+      ? "Last scan completed"
+      : settingsQ.data?.last_run_status === "partial"
+        ? "Scan completed with warnings"
+        : settingsQ.data?.last_run_status === "error"
+          ? "Last scan needs attention"
+          : "Monitoring ready";
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-20 border-b border-border bg-background/85 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+    <div className="app-shell min-h-screen bg-background text-foreground">
+      <header className="app-header sticky top-0 z-20 border-b border-border bg-background/90 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:px-6">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/15">
             <BellRing className="h-5 w-5" />
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="truncate text-base font-semibold leading-tight">Tender Watch</h1>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Procurement intelligence</p>
+            <h1 className="truncate text-lg font-bold leading-tight tracking-tight">Tender Finder Pro</h1>
             <p className="truncate text-xs text-muted-foreground">
-              Last check {relTime(settingsQ.data?.last_run_at)} · {newCount} new
+              India-wide government supply tenders · Updated {relTime(settingsQ.data?.last_run_at)}
             </p>
           </div>
           {notifPermission !== "granted" && typeof Notification !== "undefined" && (
@@ -288,6 +307,7 @@ function Dashboard() {
           </Button>
           <Button
             size="sm"
+            aria-label={isRunning ? "Tender scan is running" : "Run tender scan now"}
             onClick={() => runMut.mutate()}
             disabled={runMut.isPending || isRunning}
             className="gap-1.5"
@@ -302,7 +322,63 @@ function Dashboard() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-4 space-y-4">
+      <main className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+        <section className="overview-hero relative overflow-hidden rounded-3xl p-6 text-white shadow-2xl shadow-slate-900/10 sm:p-8">
+          <div className="hero-orb hero-orb-one" aria-hidden="true" />
+          <div className="hero-orb hero-orb-two" aria-hidden="true" />
+          <div className="relative z-10 grid gap-7 lg:grid-cols-[1.5fr_1fr] lg:items-end">
+            <div className="max-w-2xl">
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-slate-100 backdrop-blur">
+                <span className={`h-2 w-2 rounded-full ${isRunning ? "animate-pulse bg-amber-300" : settingsQ.data?.last_run_status === "error" ? "bg-rose-300" : "bg-emerald-300"}`} />
+                {statusText}
+              </div>
+              <h2 className="max-w-xl text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
+                Stay ahead of every relevant tender.
+              </h2>
+              <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300 sm:text-base">
+                Discover mattress, bedding and related supply opportunities across central, state and public-sector procurement portals.
+              </p>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Button
+                  onClick={() => { setFilter("all"); setSearch(""); document.getElementById("tender-results")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}
+                  className="gap-2 border border-white/15 bg-white text-slate-950 hover:bg-slate-100"
+                >
+                  Explore tenders <ExternalLink className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowSettings(true)}
+                  className="border-white/25 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+                >
+                  <SettingsIcon className="mr-2 h-4 w-4" /> Refine matching
+                </Button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="hero-stat">
+                <div className="flex items-center gap-2 text-slate-300"><Search className="h-4 w-4" /><span className="text-xs">Tender matches</span></div>
+                <p className="mt-3 text-3xl font-semibold tracking-tight tabular-nums">{tenderCount}</p>
+                <p className="mt-1 text-xs text-slate-400">Saved opportunities</p>
+              </div>
+              <div className="hero-stat">
+                <div className="flex items-center gap-2 text-slate-300"><BellRing className="h-4 w-4" /><span className="text-xs">New matches</span></div>
+                <p className="mt-3 text-3xl font-semibold tracking-tight tabular-nums">{newCount}</p>
+                <p className="mt-1 text-xs text-slate-400">Awaiting review</p>
+              </div>
+              <div className="hero-stat">
+                <div className="flex items-center gap-2 text-slate-300"><Activity className="h-4 w-4" /><span className="text-xs">Healthy sources</span></div>
+                <p className="mt-3 text-3xl font-semibold tracking-tight tabular-nums">{sourceHealthyCount}<span className="ml-1 text-sm font-medium text-slate-400">/ {sourceHealth.length}</span></p>
+                <p className="mt-1 text-xs text-slate-400">Latest recorded status</p>
+              </div>
+              <div className="hero-stat">
+                <div className="flex items-center gap-2 text-slate-300"><CalendarClock className="h-4 w-4" /><span className="text-xs">Last scan</span></div>
+                <p className="mt-3 text-2xl font-semibold tracking-tight">{relTime(settingsQ.data?.last_run_at)}</p>
+                <p className="mt-1 text-xs text-slate-400">{sourceErrorCount ? `${sourceErrorCount} sources need attention` : "Monitoring status"}</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {showSettings && (
           <SettingsPanel
             keywords={settingsQ.data?.keywords ?? []}
@@ -340,7 +416,7 @@ function Dashboard() {
 
 
 
-        <Card className="p-4">
+        <Card className="portal-panel rounded-2xl p-5 shadow-sm sm:p-6">
           <button
             type="button"
             onClick={() => setShowSources((value) => !value)}
@@ -402,7 +478,7 @@ function Dashboard() {
                             href={source.source_url}
                             target="_blank"
                             rel="noreferrer"
-                            className="mt-1 inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+                            className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary transition-colors hover:underline"
                           >
                             Open portal <ExternalLink className="h-3 w-3" />
                           </a>
@@ -416,8 +492,17 @@ function Dashboard() {
           )}
         </Card>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex rounded-md border border-border p-0.5">
+        <section id="tender-results" className="space-y-4 scroll-mt-24">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Opportunity feed</p>
+            <h2 className="mt-1 text-xl font-semibold tracking-tight">Matched tenders</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Review matching opportunities, open the source notice, and track what you have read.</p>
+          </div>
+          <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex"><ShieldCheck className="h-4 w-4 text-emerald-600" /> Source-linked results</div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/80 bg-white/80 p-3 shadow-sm backdrop-blur">
+          <div className="flex rounded-xl border border-border bg-muted/60 p-1">
             <button
               onClick={() => setFilter("new")}
               className={`rounded px-3 py-1 text-xs font-medium transition ${
@@ -473,7 +558,7 @@ function Dashboard() {
             {filtered.map((t) => (
               <Card
                 key={t.id}
-                className={`group p-4 transition ${
+                className={`tender-card group rounded-2xl p-5 transition-all duration-200 sm:p-6 ${
                   t.seen ? "opacity-70" : "border-primary/40"
                 }`}
               >
@@ -509,7 +594,7 @@ function Dashboard() {
                         </Badge>
                       ))}
                     </div>
-                    <h3 className="text-sm font-semibold leading-snug">{t.title}</h3>
+                    <h3 className="text-base font-semibold leading-snug tracking-tight sm:text-[17px]">{t.title}</h3>
                     {t.organisation && (
                       <p className="text-xs text-muted-foreground">{t.organisation}</p>
                     )}
@@ -534,13 +619,16 @@ function Dashboard() {
                       href={t.tender_url ?? t.source_url}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1 rounded-md bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground hover:bg-secondary/80"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-foreground shadow-sm transition hover:border-primary/30 hover:bg-primary/5"
                     >
                       Open <ExternalLink className="h-3 w-3" />
                     </a>
                     <button
+                      type="button"
+                      aria-label={t.seen ? "Mark tender unread" : "Mark tender as read"}
                       onClick={() => markMut.mutate({ id: t.id, seen: !t.seen })}
-                      className="text-xs text-muted-foreground hover:text-foreground"
+                      disabled={markMut.isPending}
+                      className="rounded-lg px-2 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:cursor-wait disabled:opacity-50"
                     >
                       {t.seen ? "Mark unread" : "Mark read"}
                     </button>
@@ -550,10 +638,12 @@ function Dashboard() {
             ))}
           </div>
         )}
+        </section>
 
-        <p className="pt-4 text-center text-[11px] text-muted-foreground">
-          Scheduled checks run every 2 hours. Email alerts can arrive in the background; browser notifications require this tab to stay open and browser permission to be enabled.
-        </p>
+        <footer className="flex flex-col gap-2 border-t border-border/70 pt-5 text-center text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:text-left">
+          <span>Government procurement monitor · Mattress, bedding & related supplies</span>
+          <span>Scheduled checks are designed to run every 2 hours. Browser notifications require permission and an open app session.</span>
+        </footer>
       </main>
     </div>
   );
