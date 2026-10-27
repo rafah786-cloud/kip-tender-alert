@@ -256,11 +256,32 @@ export async function runTenderCheck(): Promise<RunResult> {
     }
   }
 
+  // Record per-portal health so the dashboard can show which sources are
+  // reachable and how many candidates each produced on the last run.
+  const nowIso = new Date().toISOString();
+  const healthRows = summary.map((s) => ({
+    source_key: s.key,
+    source_label: s.label,
+    source_url:
+      results.find((r) => r.source.key === s.key)?.source.url ?? "",
+    last_checked_at: nowIso,
+    last_status: s.error ? "error" : "ok",
+    candidate_count: s.matches,
+    last_error: s.error ?? null,
+    updated_at: nowIso,
+  }));
+  if (healthRows.length > 0) {
+    const { error: hErr } = await sb
+      .from("tender_source_health")
+      .upsert(healthRows, { onConflict: "source_key" });
+    if (hErr) console.error("[tender-health] upsert failed:", hErr.message);
+  }
+
   const errored = summary.filter((s) => s.error).map((s) => `${s.key}: ${s.error}`);
   const status =
     errored.length === results.length ? "error" : errored.length > 0 ? "partial" : "ok";
   const message =
-    `Scanned ${allRows.length} tenders → deep-audited BOQ/contract docs for ${toDeep.length} → ${totalKept} kept at ≥${Math.round(minConfidence * 100)}% confidence${includeMaybe ? " (incl. maybe)" : " (yes only)"} (${inserted} new).` +
+    `Scanned ${allRows.length} tenders (${skippedKnown} already saved, skipped re-review) → deep-audited BOQ/contract docs for ${toDeep.length} → ${totalKept} kept at ≥${Math.round(minConfidence * 100)}% confidence${includeMaybe ? " (incl. maybe)" : " (yes only)"} (${inserted} new).` +
     (aiError ? ` Stage-1 error: ${aiError}.` : "") +
     (docCheckErr ? ` Doc-check error: ${docCheckErr}.` : "") +
     emailNote +
