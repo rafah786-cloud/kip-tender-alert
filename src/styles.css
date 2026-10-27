@@ -63,24 +63,24 @@
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
+  --background: oklch(0.982 0.006 255);
+  --foreground: oklch(0.22 0.035 258);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.129 0.042 264.695);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.968 0.007 247.896);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.968 0.007 247.896);
+  --primary: oklch(0.32 0.075 264);
+  --primary-foreground: oklch(0.99 0.003 255);
+  --secondary: oklch(0.955 0.012 255);
+  --secondary-foreground: oklch(0.28 0.045 260);
+  --muted: oklch(0.955 0.012 255);
+  --muted-foreground: oklch(0.51 0.03 258);
+  --accent: oklch(0.94 0.025 255);
   --accent-foreground: oklch(0.208 0.042 265.755);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
+  --border: oklch(0.91 0.018 255);
+  --input: oklch(0.90 0.02 255);
   --ring: oklch(0.704 0.04 256.788);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
@@ -141,4 +141,47 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
   }
+}
+
+
+/* Tender Finder Pro — polished procurement workspace */
+html { scroll-behavior: smooth; }
+body { font-feature-settings: "ss01" on, "cv11" on; }
+button, a, input { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 3px solid oklch(0.72 0.12 250 / 55%);
+  outline-offset: 2px;
+}
+.app-shell {
+  background:
+    radial-gradient(ellipse at 14% 0%, oklch(0.93 0.035 250 / 45%), transparent 38rem),
+    linear-gradient(180deg, oklch(0.985 0.006 255), oklch(0.97 0.012 250));
+}
+.app-header { box-shadow: 0 1px 0 oklch(0.25 0.04 260 / 4%); }
+.overview-hero {
+  background: linear-gradient(125deg, oklch(0.22 0.055 260), oklch(0.29 0.085 270) 56%, oklch(0.26 0.09 245));
+  isolation: isolate;
+}
+.hero-orb { position: absolute; z-index: 0; pointer-events: none; border-radius: 9999px; filter: blur(2px); }
+.hero-orb-one { width: 22rem; height: 22rem; right: -7rem; top: -10rem; background: radial-gradient(circle, oklch(0.57 0.14 255 / 28%), transparent 70%); }
+.hero-orb-two { width: 20rem; height: 20rem; right: 24%; bottom: -15rem; background: radial-gradient(circle, oklch(0.56 0.12 190 / 24%), transparent 70%); }
+.hero-stat {
+  min-width: 0;
+  border: 1px solid oklch(1 0 0 / 13%);
+  border-radius: 1rem;
+  background: oklch(1 0 0 / 7%);
+  padding: 1rem;
+  backdrop-filter: blur(12px);
+}
+.portal-panel, .tender-card { border-color: oklch(0.89 0.02 255); background: oklch(1 0 0 / 92%); }
+.portal-panel { box-shadow: 0 8px 28px oklch(0.25 0.04 260 / 3%); }
+.tender-card { box-shadow: 0 3px 12px oklch(0.25 0.04 260 / 3%); }
+.tender-card:hover { border-color: oklch(0.74 0.07 260); box-shadow: 0 10px 28px oklch(0.25 0.04 260 / 7%); transform: translateY(-1px); }
+#tender-results { scroll-margin-top: 6rem; }
+@media (max-width: 640px) {
+  .overview-hero { border-radius: 1.5rem; }
+  .hero-stat { padding: .8rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
