@@ -318,7 +318,7 @@ export async function runTenderCheck(): Promise<RunResult> {
   if (inserted > 0 && notifyEmail && notifyEmail.includes("@")) {
     try {
       const { sendTenderEmail } = await import("./email-send.server");
-      const dashboardUrl = process.env.SITE_URL || "https://tenderwatch.lovable.app";
+      const dashboardUrl = process.env.SITE_URL || "https://kip-tender-alert.lovable.app";
       const result = await sendTenderEmail({
         templateName: "tender-alert",
         recipientEmail: notifyEmail,
