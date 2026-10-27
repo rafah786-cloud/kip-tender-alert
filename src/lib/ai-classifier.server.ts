@@ -1,5 +1,6 @@
 // Server-only: uses Lovable AI Gateway to classify tender rows as mattress-supply tenders.
 // No keyword pre-filter — the model decides.
+import { getServerRuntimeEnv } from "./runtime-env.server";
 
 export interface ClassifyInput {
   id: string; // stable id from caller (e.g. fingerprint)
@@ -36,7 +37,7 @@ export async function classifyTenders(
   items: ClassifyInput[],
 ): Promise<ClassifyVerdict[]> {
   if (items.length === 0) return [];
-  const key = process.env.LOVABLE_API_KEY;
+  const key = getServerRuntimeEnv("LOVABLE_API_KEY");
   if (!key) throw new Error("LOVABLE_API_KEY missing");
 
   const verdicts: ClassifyVerdict[] = [];
