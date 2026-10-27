@@ -1,11 +1,12 @@
 import { getRequest } from "@tanstack/react-start/server";
+import { getServerRuntimeEnv } from "./runtime-env.server";
 
 export const ADMIN_SESSION_COOKIE = "__Host-tender_watch_admin";
 export const ADMIN_SESSION_TTL_SECONDS = 8 * 60 * 60;
 const MIN_ADMIN_TOKEN_LENGTH = 32;
 
 function configuredAdminToken(): string | null {
-  const token = process.env.TENDER_WATCH_ADMIN_TOKEN?.trim();
+  const token = getServerRuntimeEnv("TENDER_WATCH_ADMIN_TOKEN");
   return token && token.length >= MIN_ADMIN_TOKEN_LENGTH ? token : null;
 }
 
