@@ -60,7 +60,8 @@ DO $scheduler$
 DECLARE
   old_job record;
 BEGIN
-  IF to_regclass('cron.job') IS NOT NULL THEN
+  IF to_regclass('cron.job') IS NOT NULL
+     AND EXISTS (SELECT 1 FROM vault.decrypted_secrets WHERE name = 'tender_watch_cron_token') THEN
     FOR old_job IN
       SELECT jobid
       FROM cron.job
