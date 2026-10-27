@@ -132,7 +132,7 @@ export const Route = createFileRoute("/lovable/email/transactional/send")({
           )
         }
 
-        if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(fixedRecipient)) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fixedRecipient)) {
           return Response.json({ error: 'Configured notification email is invalid' }, { status: 400 })
         }
 
