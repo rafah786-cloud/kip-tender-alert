@@ -9,9 +9,13 @@ import { runTenderCheck } from "@/lib/tenders.runner.server";
 // pipeline while keeping the token out of cron job definitions.
 async function checkAuth(request: Request): Promise<Response | null> {
   const header = request.headers.get("authorization") ?? "";
+  // The pg_cron job sends the Vault-stored token in an `apikey` header;
+  // manual triggers use Authorization: Bearer or ?secret=.
   const provided = header.startsWith("Bearer ")
     ? header.slice("Bearer ".length)
-    : (new URL(request.url).searchParams.get("secret") ?? "");
+    : (request.headers.get("apikey") ??
+      new URL(request.url).searchParams.get("secret") ??
+      "");
   if (!provided) {
     return new Response("Unauthorized", { status: 401 });
   }
