@@ -750,6 +750,74 @@ function SettingsPanel({
 
 
 
+function PortalHealthPanel({ rows, loading }: { rows: SourceHealthRow[]; loading: boolean }) {
+  // Group menu pages under their portal (key prefix before "__").
+  const portals = useMemo(() => {
+    const map = new Map<string, SourceHealthRow[]>();
+    for (const r of rows) {
+      const prefix = r.source_key.split("__")[0];
+      const arr = map.get(prefix) ?? [];
+      arr.push(r);
+      map.set(prefix, arr);
+    }
+    return [...map.entries()];
+  }, [rows]);
+
+  if (loading && rows.length === 0) return null;
+  if (rows.length === 0) {
+    return (
+      <Card className="p-3 text-xs text-muted-foreground">
+        Portal health will appear here after the first scan completes.
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-3">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Portal health
+      </p>
+      <div className="space-y-2">
+        {portals.map(([prefix, items]) => {
+          const okCount = items.filter((i) => i.last_status === "ok").length;
+          const errCount = items.length - okCount;
+          const totalCandidates = items.reduce((n, i) => n + (i.candidate_count ?? 0), 0);
+          const lastChecked = items
+            .map((i) => i.last_checked_at)
+            .filter(Boolean)
+            .sort()
+            .pop();
+          const firstErr = items.find((i) => i.last_error)?.last_error;
+          return (
+            <div key={prefix} className="flex flex-wrap items-center gap-2 text-xs">
+              <span
+                className={`inline-block h-2 w-2 rounded-full ${
+                  errCount === 0
+                    ? "bg-green-500"
+                    : okCount === 0
+                      ? "bg-red-500"
+                      : "bg-amber-500"
+                }`}
+                aria-hidden
+              />
+              <span className="font-medium">{items[0].source_label.split("—")[0].trim()}</span>
+              <span className="text-muted-foreground">
+                {okCount}/{items.length} pages ok · {totalCandidates} candidates · checked{" "}
+                {relTime(lastChecked)}
+              </span>
+              {firstErr && (
+                <span className="truncate text-destructive" title={firstErr}>
+                  {firstErr.slice(0, 80)}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 function EmptyState({ onCheck, loading }: { onCheck: () => void; loading: boolean }) {
   return (
     <Card className="p-10 text-center space-y-3">
