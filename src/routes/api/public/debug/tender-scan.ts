@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { scrapeAllSourcesRaw } from "@/lib/tenders.server";
 import { classifyTenders } from "@/lib/ai-classifier.server";
 import { deepClassifyTenderDebug } from "@/lib/doc-classifier.server";
+import { isAdminSession } from "@/lib/admin-session.server";
 
 // Public debug endpoint — inspect exactly what the pipeline sees for a run.
 // Returns:
@@ -19,15 +20,9 @@ export const Route = createFileRoute("/api/public/debug/tender-scan")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const secret = process.env.CRON_SECRET;
-        if (!secret) {
-          return new Response("Server not configured", { status: 503 });
-        }
-        const header = request.headers.get("authorization") ?? "";
-        const provided = header.startsWith("Bearer ")
-          ? header.slice("Bearer ".length)
-          : new URL(request.url).searchParams.get("secret") ?? "";
-        if (provided !== secret) {
+        // This diagnostic endpoint exposes raw tender page content and is restricted
+        // to the administrator session; never accept a secret in the URL.
+        if (!(await isAdminSession(request))) {
           return new Response("Unauthorized", { status: 401 });
         }
         try {
