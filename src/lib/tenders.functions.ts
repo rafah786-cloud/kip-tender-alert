@@ -188,6 +188,27 @@ export const markAllSeen = createServerFn({ method: "POST" }).handler(async () =
   return { ok: true };
 });
 
+export interface TenderSourceHealth {
+  source_key: string;
+  source_label: string;
+  source_url: string;
+  last_checked_at: string | null;
+  last_status: "ok" | "error";
+  candidate_count: number;
+  last_error: string | null;
+}
+
+export const listSourceHealth = createServerFn({ method: "GET" }).handler(async () => {
+  const sb = getServerClient();
+  const { data, error } = await sb
+    .from("tender_source_health")
+    .select("source_key, source_label, source_url, last_checked_at, last_status, candidate_count, last_error")
+    .order("source_label", { ascending: true })
+    .limit(100);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as TenderSourceHealth[];
+});
+
 export const runCheckNow = createServerFn({ method: "POST" }).handler(async () => {
   const { runTenderCheck } = await import("./tenders.runner.server");
   return runTenderCheck();
