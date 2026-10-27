@@ -3,9 +3,15 @@
 import { createClient } from "@supabase/supabase-js";
 import { scrapeAllSources } from "./tenders.server";
 import { classifyTenders } from "./ai-classifier.server";
+import { getServerRuntimeEnv } from "./runtime-env.server";
 
 function getServerClient() {
-  return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+  const supabaseUrl = getServerRuntimeEnv("SUPABASE_URL");
+  const serviceRoleKey = getServerRuntimeEnv("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("Tender scanner server configuration is missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
+  }
+  return createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
@@ -26,6 +32,30 @@ export async function runTenderCheck(): Promise<RunResult> {
     .eq("id", 1)
     .single();
   if (sErr) throw new Error(sErr.message);
+
+  // Fail before fan-out when the deployment cannot see its Firecrawl secret.
+  // This keeps Scan Now responsive and prevents a wall of repeated source errors.
+  if (!getServerRuntimeEnv("FIRECRAWL_API_KEY")) {
+    const now = new Date().toISOString();
+    const message =
+      "Scan failed before scraping: FIRECRAWL_API_KEY is not available to the deployed server runtime. Verify that the secret is saved for this Lovable deployment, then sync and publish the latest source. The secret value is never logged.";
+    const { error: statusError } = await sb
+      .from("settings")
+      .update({
+        last_run_at: now,
+        last_run_status: "error",
+        last_run_message: message,
+      })
+      .eq("id", 1);
+    return {
+      ok: false,
+      new_count: 0,
+      total_matches: 0,
+      sources: [],
+      message: statusError ? `${message} Settings update also failed: ${statusError.message}` : message,
+    };
+  }
+
   const notifyEmail = (settings?.notify_email as string | null) ?? null;
   const minConfidence = Number(
     (settings as { ai_min_confidence?: number } | null)?.ai_min_confidence ?? 0.6,
