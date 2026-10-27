@@ -83,8 +83,6 @@ export interface FileRoutesByFullPath {
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/api/public/debug/tender-scan': typeof ApiPublicDebugTenderScanRoute
   '/api/admin/session': typeof ApiAdminSessionRoute
-  '/api/admin/session': typeof ApiAdminSessionRoute
-  '/api/admin/session': typeof ApiAdminSessionRoute
   '/api/public/hooks/check-tenders': typeof ApiPublicHooksCheckTendersRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
@@ -96,6 +94,7 @@ export interface FileRoutesByTo {
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/api/public/debug/tender-scan': typeof ApiPublicDebugTenderScanRoute
+  '/api/admin/session': typeof ApiAdminSessionRoute
   '/api/public/hooks/check-tenders': typeof ApiPublicHooksCheckTendersRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
@@ -108,6 +107,7 @@ export interface FileRoutesById {
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/api/public/debug/tender-scan': typeof ApiPublicDebugTenderScanRoute
+  '/api/admin/session': typeof ApiAdminSessionRoute
   '/api/public/hooks/check-tenders': typeof ApiPublicHooksCheckTendersRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
@@ -122,7 +122,6 @@ export interface FileRouteTypes {
     | '/lovable/email/suppression'
     | '/api/public/debug/tender-scan'
     | '/api/admin/session'
-    | '/api/admin/session'
     | '/api/public/hooks/check-tenders'
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
@@ -134,6 +133,7 @@ export interface FileRouteTypes {
     | '/email/unsubscribe'
     | '/lovable/email/suppression'
     | '/api/public/debug/tender-scan'
+    | '/api/admin/session'
     | '/api/public/hooks/check-tenders'
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
@@ -145,6 +145,7 @@ export interface FileRouteTypes {
     | '/email/unsubscribe'
     | '/lovable/email/suppression'
     | '/api/public/debug/tender-scan'
+    | '/api/admin/session'
     | '/api/public/hooks/check-tenders'
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
