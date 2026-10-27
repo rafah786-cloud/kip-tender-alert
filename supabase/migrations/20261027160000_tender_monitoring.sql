@@ -38,8 +38,8 @@ CREATE OR REPLACE FUNCTION public.is_valid_tender_cron_secret(candidate_secret t
 RETURNS boolean
 LANGUAGE sql
 SECURITY DEFINER
-SET search_path = public, vault
-AS $$
+SET search_path = pg_catalog
+AS $
   SELECT candidate_secret IS NOT NULL
      AND length(candidate_secret) >= 48
      AND EXISTS (
@@ -60,7 +60,7 @@ CREATE OR REPLACE FUNCTION public.trigger_tender_check(secret text)
 RETURNS bigint
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, extensions, vault
+SET search_path = pg_catalog
 AS $function$
 DECLARE
   req_id bigint;
