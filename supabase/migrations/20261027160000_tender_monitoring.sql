@@ -52,3 +52,43 @@ $$;
 
 REVOKE ALL ON FUNCTION public.is_valid_tender_cron_secret(text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.is_valid_tender_cron_secret(text) TO service_role;
+ 
+-- Replace the stale/dev scheduler URL and unauthenticated anon-key header with
+-- the production site and dedicated Vault token. The token is not embedded in
+-- the cron command or committed to Git.
+DO $scheduler$
+DECLARE
+  old_job record;
+BEGIN
+  IF to_regclass('cron.job') IS NOT NULL THEN
+    FOR old_job IN
+      SELECT jobid
+      FROM cron.job
+      WHERE command LIKE '%/api/public/hooks/check-tenders%'
+    LOOP
+      PERFORM cron.unschedule(old_job.jobid);
+    END LOOP;
+
+    PERFORM cron.schedule(
+      'tender-watch-every-two-hours',
+      '0 */2 * * *',
+      $task$
+        SELECT net.http_post(
+          url := 'https://kip-tender-alert.lovable.app/api/public/hooks/check-tenders',
+          headers := jsonb_build_object(
+            'Content-Type', 'application/json',
+            'Authorization', 'Bearer ' || (
+              SELECT decrypted_secret
+              FROM vault.decrypted_secrets
+              WHERE name = 'tender_watch_cron_token'
+            )
+          ),
+          body := '{}'::jsonb,
+          timeout_milliseconds := 300000
+        );
+      $task$
+    );
+  END IF;
+END
+$scheduler$;
+
