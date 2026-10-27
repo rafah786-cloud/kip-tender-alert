@@ -3,6 +3,7 @@ import { render } from 'react-email'
 import { createClient } from '@supabase/supabase-js'
 import { createFileRoute } from '@tanstack/react-router'
 import { TEMPLATES } from '@/lib/email-templates/registry'
+import { isAdminSession, isSameOriginRequest } from '@/lib/admin-session.server'
 
 // Configuration baked in at scaffold time
 const SITE_NAME = "Tender Finder Pro"
@@ -44,31 +45,26 @@ export const Route = createFileRoute("/lovable/email/transactional/send")({
           )
         }
 
-        // Verify the caller has a valid Supabase auth token.
-        // In TanStack, there is no Supabase gateway — we validate the JWT ourselves.
-        const authHeader = request.headers.get('Authorization')
-        if (!authHeader?.startsWith('Bearer ')) {
+        // This endpoint is restricted to the single administrator session, not any
+        // arbitrary signed-in user. Same-origin enforcement also protects cookie auth.
+        if (!isSameOriginRequest(request) || !(await isAdminSession(request))) {
           return Response.json({ error: 'Unauthorized' }, { status: 401 })
         }
 
-        const token = authHeader.slice('Bearer '.length).trim()
-        const supabase = createClient(supabaseUrl, supabaseServiceKey)
-        const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-
-        if (authError || !user) {
-          return Response.json({ error: 'Unauthorized' }, { status: 401 })
-        }
+        const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        })
 
         // Parse request body
         let templateName: string
-        let recipientEmail: string
+        let recipientEmail: string | null = null
         let idempotencyKey: string
         let messageId: string
         let templateData: Record<string, any> = {}
         try {
           const body = await request.json()
           templateName = body.templateName || body.template_name
-          recipientEmail = body.recipientEmail || body.recipient_email
+          recipientEmail = body.recipientEmail || body.recipient_email || null
           messageId = crypto.randomUUID()
           idempotencyKey = body.idempotencyKey || body.idempotency_key || messageId
           if (body.templateData && typeof body.templateData === 'object') {
@@ -101,19 +97,46 @@ export const Route = createFileRoute("/lovable/email/transactional/send")({
           )
         }
 
-        // Resolve effective recipient: template-level `to` takes precedence over
-        // the caller-provided recipientEmail. This allows notification templates
-        // to always send to a fixed address (e.g., site owner from env var).
-        const effectiveRecipient = template.to || recipientEmail
+        // Recipients are fixed to the configured alert address. A caller may not
+        // choose arbitrary recipients, even with a valid administrator session.
+        const { data: settings, error: settingsError } = await supabase
+          .from('settings')
+          .select('notify_email')
+          .eq('id', 1)
+          .single()
 
-        if (!effectiveRecipient) {
+        if (settingsError) {
+          console.error('Failed to load configured notification recipient')
+          return Response.json({ error: 'Failed to verify notification recipient' }, { status: 500 })
+        }
+
+        const configuredRecipient = typeof settings?.notify_email === 'string'
+          ? settings.notify_email.trim().toLowerCase()
+          : ''
+        const fixedRecipient = (template.to || configuredRecipient).trim().toLowerCase()
+
+        if (!fixedRecipient) {
           return Response.json(
-            {
-              error: 'recipientEmail is required (unless the template defines a fixed recipient)',
-            },
-            { status: 400 }
+            { error: 'Configure the notification email in Tender Watch settings first' },
+            { status: 409 }
           )
         }
+
+        if (
+          recipientEmail &&
+          recipientEmail.trim().toLowerCase() !== fixedRecipient
+        ) {
+          return Response.json(
+            { error: 'Sending to arbitrary recipients is not permitted' },
+            { status: 403 }
+          )
+        }
+
+        if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(fixedRecipient)) {
+          return Response.json({ error: 'Configured notification email is invalid' }, { status: 400 })
+        }
+
+        const effectiveRecipient = fixedRecipient
 
         // 2. Check suppression list (fail-closed: if we can't verify, don't send)
         const { data: suppressed, error: suppressionError } = await supabase
