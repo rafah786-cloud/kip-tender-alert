@@ -285,9 +285,19 @@ function parseListing(
       if (matches.length === 0) continue;
     }
 
-    const linkMatch = row.match(/\[([^\]]+)\]\((https?:[^)]+)\)/);
-    const tender_url = linkMatch?.[2];
+    const linkMatch = row.match(/\[([^\]]+)\]\(([^)]+)\)/);
     const titleFromLink = linkMatch?.[1];
+    let tender_url: string | undefined;
+    if (linkMatch?.[2]) {
+      try {
+        const resolved = new URL(linkMatch[2], source.url);
+        if (resolved.protocol === "https:" || resolved.protocol === "http:") {
+          tender_url = resolved.href;
+        }
+      } catch {
+        // Ignore malformed or non-web links; the source URL remains available.
+      }
+    }
 
     const cells = row.startsWith("|")
       ? row.split("|").map((c) => c.trim()).filter((c) => c.length > 0)
