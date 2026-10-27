@@ -7,6 +7,10 @@ import {
   Bell,
   BellRing,
   CheckCheck,
+  ChevronDown,
+  CheckCircle2,
+  AlertTriangle,
+  Globe,
   ExternalLink,
   Loader2,
   RefreshCw,
@@ -18,6 +22,7 @@ import {
 import {
   getSettings,
   listTenders,
+  listSourceHealth,
   markAllSeen,
   markSeen,
   startCheckInBackground,
@@ -109,6 +114,7 @@ function Dashboard() {
   const router = useRouter();
   const getSettingsFn = useServerFn(getSettings);
   const listTendersFn = useServerFn(listTenders);
+  const listSourceHealthFn = useServerFn(listSourceHealth);
   const runCheckFn = useServerFn(startCheckInBackground);
   const markSeenFn = useServerFn(markSeen);
   const markAllSeenFn = useServerFn(markAllSeen);
@@ -127,6 +133,15 @@ function Dashboard() {
     refetchIntervalInBackground: true,
   });
   const isRunning = settingsQ.data?.last_run_status === "running";
+  const sourceHealthQ = useQuery({
+    queryKey: ["sourceHealth"],
+    queryFn: () => listSourceHealthFn(),
+    refetchInterval: isRunning ? 8_000 : 60_000,
+  });
+  const sourceHealth = sourceHealthQ.data ?? [];
+  const sourceErrorCount = sourceHealth.filter((s) => s.last_status === "error").length;
+  const sourceHealthyCount = sourceHealth.filter((s) => s.last_status === "ok").length;
+
   const tendersQ = useQuery({
     queryKey: ["tenders"],
     queryFn: () => listTendersFn(),
@@ -134,6 +149,7 @@ function Dashboard() {
   });
 
   const [showSettings, setShowSettings] = useState(false);
+  const [showSources, setShowSources] = useState(false);
   const [filter, setFilter] = useState<"all" | "new">("new");
   const [search, setSearch] = useState("");
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>("default");
@@ -297,6 +313,82 @@ function Dashboard() {
         )}
 
 
+
+        <Card className="p-4">
+          <button
+            type="button"
+            onClick={() => setShowSources((value) => !value)}
+            aria-expanded={showSources}
+            className="flex w-full items-center gap-3 text-left"
+          >
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
+              <Globe className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-semibold">Portal monitoring</h2>
+              <p className="text-xs text-muted-foreground">
+                {sourceHealthQ.isLoading
+                  ? "Loading portal status…"
+                  : sourceHealth.length
+                    ? `${sourceHealth.length} source pages · ${sourceHealthyCount} healthy · ${sourceErrorCount} with errors`
+                    : "Status will appear after the first scan"}
+              </p>
+            </div>
+            {sourceHealth.length > 0 && (
+              <Badge variant={sourceErrorCount ? "destructive" : "secondary"}>
+                {sourceErrorCount ? `${sourceErrorCount} errors` : "All healthy"}
+              </Badge>
+            )}
+            <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${showSources ? "rotate-180" : ""}`} />
+          </button>
+
+          {showSources && (
+            <div className="mt-4 space-y-2 border-t border-border pt-3">
+              {sourceHealthQ.isError ? (
+                <p className="text-xs text-muted-foreground">
+                  Portal health has not been recorded yet. Run a scan to initialise it.
+                </p>
+              ) : sourceHealth.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No scan history yet. Choose Check to test the configured portals.
+                </p>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {sourceHealth.map((source) => (
+                    <div key={source.source_key} className="rounded-md border border-border p-3">
+                      <div className="flex items-start gap-2">
+                        {source.last_status === "ok" ? (
+                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                        ) : (
+                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium leading-snug">{source.source_label}</p>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            Checked {relTime(source.last_checked_at)} · {source.candidate_count} candidates
+                          </p>
+                          {source.last_error && (
+                            <p className="mt-1 line-clamp-2 text-[11px] text-destructive">
+                              {source.last_error}
+                            </p>
+                          )}
+                          <a
+                            href={source.source_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-1 inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+                          >
+                            Open portal <ExternalLink className="h-3 w-3" />
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex rounded-md border border-border p-0.5">
