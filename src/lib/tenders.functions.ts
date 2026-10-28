@@ -235,6 +235,21 @@ export const runCheckNow = createServerFn({ method: "POST" }).handler(async () =
   const { runTenderCheck } = await import("./tenders.runner.server");
   return runTenderCheck();
 });
+export const stopCheckNow = createServerFn({ method: "POST" }).handler(async () => {
+  await requireAdminAccess();
+  const sb = await getServerClient();
+  const { data: current, error: readError } = await sb.from("settings").select("last_run_status").eq("id", 1).single();
+  if (readError) throw new Error(readError.message);
+  if (current?.last_run_status !== "running" && current?.last_run_status !== "stopping") {
+    return { ok: true, stopping: false, message: "No active scan was found." };
+  }
+  const { error } = await sb.from("settings").update({
+    last_run_status: "stopping",
+    last_run_message: "Stop requested by administrator. In-flight requests are being cancelled…",
+  }).eq("id", 1);
+  if (error) throw new Error(error.message);
+  return { ok: true, stopping: true, message: "Stop requested. The scanner will halt as in-flight requests are cancelled." };
+});
 
 // Fire-and-forget: marks the run as "running" and hands the actual scrape+AI
 // work to Postgres pg_net so it completes even if the user closes/minimizes
