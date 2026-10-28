@@ -24,6 +24,21 @@ export interface RunResult {
   message: string;
 }
 
+async function scanStopRequested(sb: ReturnType<typeof getServerClient>): Promise<boolean> {
+  const { data } = await sb.from("settings").select("last_run_status").eq("id", 1).single();
+  return data?.last_run_status === "stopping" || data?.last_run_status === "stopped";
+}
+
+async function finishStoppedScan(sb: ReturnType<typeof getServerClient>): Promise<RunResult> {
+  const message = "Scan stopped by administrator. No further sources or tender documents will be processed."; 
+  await sb.from("settings").update({
+    last_run_at: new Date().toISOString(),
+    last_run_status: "stopped",
+    last_run_message: message,
+  }).eq("id", 1);
+  return { ok: false, new_count: 0, total_matches: 0, sources: [], message };
+}
+
 export async function runTenderCheck(): Promise<RunResult> {
   const sb = getServerClient();
   const { data: settings, error: sErr } = await sb
@@ -91,7 +106,8 @@ export async function runTenderCheck(): Promise<RunResult> {
     include: keywords,
     exclude: excludeKeywords,
     mode: matchMode,
-  });
+  }, () => scanStopRequested(sb));
+  if (await scanStopRequested(sb)) return finishStoppedScan(sb);
 
   // Persist per-portal health so users can distinguish "no matches" from a
   // website that could not be reached or parsed.
@@ -172,6 +188,7 @@ export async function runTenderCheck(): Promise<RunResult> {
       aiError = e instanceof Error ? e.message : String(e);
     }
   }
+  if (await scanStopRequested(sb)) return finishStoppedScan(sb);
   const verdictMap = new Map(verdicts.map((v) => [v.id, v]));
 
   // Stage 1 candidates (drop hard "no"); stage 2 inspects docs.
@@ -243,6 +260,7 @@ export async function runTenderCheck(): Promise<RunResult> {
   }
 
   for (const c of toDeep) {
+    if (await scanStopRequested(sb)) return finishStoppedScan(sb);
     if (!c.tender_url) {
       // No detail URL — keep stage-1 verdict but mark as not doc-verified.
       c.deep = {
@@ -270,6 +288,8 @@ export async function runTenderCheck(): Promise<RunResult> {
       };
     }
   }
+
+  if (await scanStopRequested(sb)) return finishStoppedScan(sb);
 
   // Keep deep verdict per user threshold + maybe inclusion setting.
   const bySource = new Map<string, DeepRow[]>();
