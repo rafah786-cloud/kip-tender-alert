@@ -21,6 +21,7 @@ import {
   Search,
   Settings as SettingsIcon,
   X,
+  Square,
 } from "lucide-react";
 
 import {
@@ -30,6 +31,7 @@ import {
   markAllSeen,
   markSeen,
   startCheckInBackground,
+  stopCheckNow,
   updateAiSettings,
   updateMatchSettings,
   updateNotifyEmail,
@@ -283,6 +285,7 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
   const listTendersFn = useServerFn(listTenders);
   const listSourceHealthFn = useServerFn(listSourceHealth);
   const runCheckFn = useServerFn(startCheckInBackground);
+  const stopCheckFn = useServerFn(stopCheckNow);
   const markSeenFn = useServerFn(markSeen);
   const markAllSeenFn = useServerFn(markAllSeen);
   const updateMatchSettingsFn = useServerFn(updateMatchSettings);
@@ -296,16 +299,13 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
     // While a background check is in progress, poll faster so the UI reflects
     // completion even if the user just came back to the app.
     refetchInterval: (q) =>
-      q.state.data?.last_run_status === "running" ? 4_000 : 30_000,
+      q.state.data?.last_run_status === "running" || q.state.data?.last_run_status === "stopping" ? 4_000 : 30_000,
     refetchIntervalInBackground: true,
   });
-  const lastRunStartedAt = settingsQ.data?.last_run_at
-    ? Date.parse(settingsQ.data.last_run_at)
-    : Number.NaN;
-  const isRunning =
-    settingsQ.data?.last_run_status === "running" &&
-    Number.isFinite(lastRunStartedAt) &&
-    Date.now() - lastRunStartedAt < 30 * 60 * 1000;
+  const scanStatus = settingsQ.data?.last_run_status;
+  // Do not hide Stop Scan just because a long-running scan exceeded the stale-lock window.
+  const isRunning = scanStatus === "running" || scanStatus === "stopping";
+  const isStopping = scanStatus === "stopping";
   const sourceHealthQ = useQuery({
     queryKey: ["sourceHealth"],
     queryFn: () => listSourceHealthFn(),
@@ -369,6 +369,19 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
     },
   });
 
+  const stopMut = useMutation({
+    mutationFn: () => stopCheckFn(),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      if (result.stopping) toast.info("Stop requested. In-flight requests are being cancelled.");
+      else toast.info(result.message);
+    },
+    onError: (error) => {
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      toast.error(error instanceof Error ? error.message : "Could not stop scan");
+    },
+  });
+
   // When a running check flips to a terminal state, refresh tender list + toast.
   const prevStatusRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
@@ -410,8 +423,10 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
 
   const newCount = (tendersQ.data ?? []).filter((t) => !t.seen).length;
   const tenderCount = (tendersQ.data ?? []).length;
-  const statusText = isRunning
-    ? "Scan in progress"
+  const statusText = isStopping
+    ? "Stopping scan…"
+    : isRunning
+      ? "Scan in progress"
     : settingsQ.data?.last_run_status === "ok"
       ? "Last scan completed"
       : settingsQ.data?.last_run_status === "partial"
@@ -465,20 +480,38 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
           >
             <LogOut className="h-4 w-4" />
           </Button>
-          <Button
-            size="sm"
-            aria-label={isRunning ? "Tender scan is running" : "Run tender scan now"}
-            onClick={() => runMut.mutate()}
-            disabled={runMut.isPending || isRunning}
-            className="gap-1.5"
-          >
-            {runMut.isPending || isRunning ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            {isRunning ? "Running…" : "Check"}
-          </Button>
+          {isRunning ? (
+            <Button
+              size="sm"
+              variant="destructive"
+              aria-label={isStopping ? "Stopping tender scan" : "Stop tender scan"}
+              onClick={() => stopMut.mutate()}
+              disabled={isStopping || stopMut.isPending}
+              className="gap-1.5"
+            >
+              {isStopping || stopMut.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Square className="h-3.5 w-3.5 fill-current" />
+              )}
+              {isStopping || stopMut.isPending ? "Stopping…" : "Stop Scan"}
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              aria-label="Run tender scan now"
+              onClick={() => runMut.mutate()}
+              disabled={runMut.isPending}
+              className="gap-1.5"
+            >
+              {runMut.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              {runMut.isPending ? "Starting…" : "Check"}
+            </Button>
+          )}
         </div>
       </header>
 
