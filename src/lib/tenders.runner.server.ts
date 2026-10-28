@@ -307,6 +307,7 @@ export async function runTenderCheck(): Promise<RunResult> {
   }
 
   for (let i = 0; i < summary.length; i++) {
+    if (await scanStopRequested(sb)) return finishStoppedScan(sb);
     const sKey = summary[i].key;
     const kept = bySource.get(sKey) ?? [];
     summary[i].matches = kept.length;
