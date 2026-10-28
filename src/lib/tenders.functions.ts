@@ -244,11 +244,12 @@ export const stopCheckNow = createServerFn({ method: "POST" }).handler(async () 
     return { ok: true, stopping: false, message: "No active scan was found." };
   }
   const { error } = await sb.from("settings").update({
-    last_run_status: "stopping",
-    last_run_message: "Stop requested by administrator. In-flight requests are being cancelled…",
+    last_run_status: "stopped",
+    last_run_at: new Date().toISOString(),
+    last_run_message: "Stop requested by administrator. The scanner will exit at the next checkpoint and cancel in-flight Firecrawl requests.",
   }).eq("id", 1);
   if (error) throw new Error(error.message);
-  return { ok: true, stopping: true, message: "Stop requested. The scanner will halt as in-flight requests are cancelled." };
+  return { ok: true, stopping: true, message: "Stop requested. The scanner is being halted; any in-flight request will be cancelled." };
 });
 
 // Fire-and-forget: marks the run as "running" and hands the actual scrape+AI
