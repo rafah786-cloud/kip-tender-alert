@@ -314,6 +314,10 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
   const sourceHealth = sourceHealthQ.data ?? [];
   const sourceErrorCount = sourceHealth.filter((s) => s.last_status === "error").length;
   const sourceHealthyCount = sourceHealth.filter((s) => s.last_status === "ok").length;
+  const firecrawlConfigIssue =
+    /FIRECRAWL_API_KEY|Firecrawl authentication failed|Firecrawl credits\/quota exhausted/i.test(
+      settingsQ.data?.last_run_message ?? "",
+    ) || sourceHealth.some((source) => /FIRECRAWL_API_KEY|Firecrawl authentication failed|Firecrawl credits\/quota exhausted/i.test(source.last_error ?? ""));
 
   const tendersQ = useQuery({
     queryKey: ["tenders"],
@@ -557,6 +561,24 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
               <p className="mt-1 text-xs text-rose-800/80">{tendersQ.error instanceof Error ? tendersQ.error.message : settingsQ.error instanceof Error ? settingsQ.error.message : "Check your connection and retry."}</p>
             </div>
             <Button size="sm" variant="outline" className="shrink-0 border-rose-300 bg-white text-rose-900 hover:bg-rose-100" onClick={() => { void qc.invalidateQueries({ queryKey: ["settings"] }); void qc.invalidateQueries({ queryKey: ["tenders"] }); }}>Retry loading</Button>
+          </div>
+        )}
+
+        {firecrawlConfigIssue && (
+          <div role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-4 text-sm text-amber-950 shadow-sm">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+              <div>
+                <p className="font-semibold">Firecrawl is not available to the running app</p>
+                <p className="mt-1 leading-6">
+                  The scanner cannot fetch tender pages until the deployed server can read <code className="rounded bg-amber-100 px-1 py-0.5">FIRECRAWL_API_KEY</code>.
+                  The secret already listed in Lovable must be applied to this app build: sync the latest changes from GitHub, then publish the updated version. Do not paste the secret into code or chat.
+                </p>
+                {settingsQ.data?.last_run_message && /FIRECRAWL_API_KEY|Firecrawl/i.test(settingsQ.data.last_run_message) && (
+                  <p className="mt-2 break-words text-xs text-amber-900/90">Latest diagnostic: {settingsQ.data.last_run_message}</p>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
