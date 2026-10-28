@@ -427,13 +427,15 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
     ? "Stopping scan…"
     : isRunning
       ? "Scan in progress"
-    : settingsQ.data?.last_run_status === "ok"
-      ? "Last scan completed"
-      : settingsQ.data?.last_run_status === "partial"
-        ? "Scan completed with warnings"
-        : settingsQ.data?.last_run_status === "error"
-          ? "Last scan needs attention"
-          : "Monitoring ready";
+      : settingsQ.data?.last_run_status === "stopped"
+        ? "Last scan stopped"
+        : settingsQ.data?.last_run_status === "ok"
+          ? "Last scan completed"
+          : settingsQ.data?.last_run_status === "partial"
+            ? "Scan completed with warnings"
+            : settingsQ.data?.last_run_status === "error"
+              ? "Last scan needs attention"
+              : "Monitoring ready";
 
   return (
     <div className="app-shell min-h-screen bg-background text-foreground">
