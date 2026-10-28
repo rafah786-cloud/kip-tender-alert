@@ -37,3 +37,7 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+## Stop Scan
+
+Tender Watch supports an administrator-only **Stop Scan** action while a scan is running. A stop request updates the scan status and the worker checks for cancellation between sources, before document analysis, and before saving results. In-flight Firecrawl requests are aborted where supported; a request that has already reached an external service may take a short time to terminate.
