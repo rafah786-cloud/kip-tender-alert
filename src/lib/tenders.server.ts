@@ -133,7 +133,7 @@ interface ScrapeErr {
 
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
 
-async function firecrawlScrape(url: string): Promise<ScrapeOk | ScrapeErr> {
+async function firecrawlScrape(url: string, shouldStop?: () => Promise<boolean>): Promise<ScrapeOk | ScrapeErr> {
   // Read from the server runtime binding first, with process.env as fallback.
   // Lovable's deployed Nitro/Cloudflare runtime does not always permit writes to
   // process.env, so reading process.env alone can falsely report a missing key.
@@ -147,6 +147,13 @@ async function firecrawlScrape(url: string): Promise<ScrapeOk | ScrapeErr> {
   }
 
   try {
+    const controller = new AbortController();
+    let stopPoll: ReturnType<typeof setInterval> | undefined;
+    if (shouldStop) {
+      stopPoll = setInterval(() => {
+        void shouldStop().then((stop) => { if (stop) controller.abort("Tender scan stopped by administrator"); }).catch(() => undefined);
+      }, 750);
+    }
     const res = await fetch(FIRECRAWL_SCRAPE_URL, {
       method: "POST",
       headers: {
@@ -159,8 +166,8 @@ async function firecrawlScrape(url: string): Promise<ScrapeOk | ScrapeErr> {
         onlyMainContent: true,
         waitFor: 2500,
       }),
-      signal: AbortSignal.timeout(45_000),
-    });
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(45_000)]),
+    }).finally(() => { if (stopPoll) clearInterval(stopPoll); });
 
     const responseText = await res.text().catch(() => "");
     let json: unknown = null;
@@ -197,7 +204,9 @@ async function firecrawlScrape(url: string): Promise<ScrapeOk | ScrapeErr> {
     return { ok: true, markdown };
   } catch (error) {
     const reason =
-      error instanceof Error && error.name === "TimeoutError"
+      error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError") && shouldStop && await shouldStop()
+        ? "Scan stopped by administrator."
+        : error instanceof Error && error.name === "TimeoutError"
         ? "Firecrawl request timed out after 45 seconds."
         : error instanceof Error
           ? error.message
@@ -406,11 +415,17 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-export async function scrapeAllSources(opts?: MatchOptions): Promise<{
+export async function scrapeAllSources(
+  opts?: MatchOptions,
+  shouldStop?: () => Promise<boolean>,
+): Promise<{
   results: { source: TenderSource; matches: ParsedTender[]; error?: string }[];
 }> {
   const raw = await mapWithConcurrency(TENDER_SOURCES, 4, async (source) => {
-    const scraped = await firecrawlScrape(source.url);
+    if (shouldStop && await shouldStop()) {
+      return { source, matches: [] as ParsedTender[], error: "Scan stopped by administrator." };
+    }
+    const scraped = await firecrawlScrape(source.url, shouldStop);
     if (!scraped.ok) {
       return { source, matches: [] as ParsedTender[], error: scraped.error };
     }
