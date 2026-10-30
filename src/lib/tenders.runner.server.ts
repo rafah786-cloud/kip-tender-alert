@@ -89,15 +89,21 @@ export async function runTenderCheck(): Promise<RunResult> {
   // Persist per-portal health so users can distinguish "no matches" from a
   // website that could not be reached or parsed.
   const checkedAt = new Date().toISOString();
-  const healthRows = results.map((r) => ({
-    source_key: r.source.key,
-    source_label: r.source.label,
-    source_url: r.source.url,
-    last_checked_at: checkedAt,
-    last_status: r.error ? "error" : "ok",
-    candidate_count: r.matches.length,
-    last_error: r.error ? r.error.slice(0, 1200) : null,
-  }));
+  const healthBySource = new Map(
+    results.map((r) => [
+      r.source.key,
+      {
+        source_key: r.source.key,
+        source_label: r.source.label,
+        source_url: r.source.url,
+        last_checked_at: checkedAt,
+        last_status: r.error ? "error" : "ok",
+        candidate_count: r.matches.length,
+        last_error: r.error ? r.error.slice(0, 1200) : null,
+      },
+    ]),
+  );
+  const healthRows = [...healthBySource.values()];
   const { error: healthError } = await sb
     .from("tender_source_health")
     .upsert(healthRows, { onConflict: "source_key" });
