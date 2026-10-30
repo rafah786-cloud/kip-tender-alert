@@ -1,3 +1,5 @@
+import { createClient } from "@supabase/supabase-js";
+
 // Server-only environment access for the Nitro/Cloudflare deployment.
 // Secrets arrive as runtime bindings on the server fetch() handler. Keep a
 // binding fallback because some worker runtimes expose process.env as read-only.
@@ -77,4 +79,30 @@ export function getServerRuntimeEnv(name: RuntimeSecretName): string | undefined
 
 export function isServerRuntimeEnvConfigured(name: RuntimeSecretName): boolean {
   return Boolean(getServerRuntimeEnv(name));
+}
+
+/**
+ * Create a service-role client that supports both legacy JWT keys and the
+ * newer opaque sb_secret_* keys. Opaque keys belong in apikey, not Bearer auth.
+ */
+export function createServerSupabaseClient(url: string, key: string) {
+  const fetchWithApiKey: typeof fetch = (input, init) => {
+    const headers = new Headers(
+      typeof Request !== "undefined" && input instanceof Request ? input.headers : undefined,
+    );
+    if (init?.headers) {
+      new Headers(init.headers).forEach((value, name) => headers.set(name, value));
+    }
+    const isOpaqueKey = key.startsWith("sb_secret_") || key.startsWith("sb_publishable_");
+    if (isOpaqueKey && headers.get("Authorization") === `Bearer ${key}`) {
+      headers.delete("Authorization");
+    }
+    headers.set("apikey", key);
+    return fetch(input, { ...init, headers });
+  };
+
+  return createClient(url, key, {
+    global: { fetch: fetchWithApiKey },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 }
