@@ -1,9 +1,9 @@
 // Server-only orchestration: scrape sources (no keyword filter), AI-classify,
 // dedupe, insert mattress-supply tenders, update settings.
-import { createClient } from "@supabase/supabase-js";
+
 import { scrapeAllSources } from "./tenders.server";
 import { classifyTenders } from "./ai-classifier.server";
-import { getServerRuntimeEnv } from "./runtime-env.server";
+import { createServerSupabaseClient, getServerRuntimeEnv } from "./runtime-env.server";
 
 function getServerClient() {
   const supabaseUrl = getServerRuntimeEnv("SUPABASE_URL");
@@ -11,9 +11,7 @@ function getServerClient() {
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error("Tender scanner server configuration is missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
   }
-  return createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  return createServerSupabaseClient(supabaseUrl, serviceRoleKey);
 }
 
 export interface RunResult {
