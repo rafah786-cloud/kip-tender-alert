@@ -1,5 +1,4 @@
 import { createServerFn } from "@tanstack/react-start";
-import { createClient } from "@supabase/supabase-js";
 
 // Sensitive single-user settings and tender records are only available to the administrator.
 async function requireAdminAccess(): Promise<void> {
@@ -48,15 +47,13 @@ export interface Settings {
 
 
 async function getServerClient() {
-  const { getServerRuntimeEnv } = await import("./runtime-env.server");
+  const { getServerRuntimeEnv, createServerSupabaseClient } = await import("./runtime-env.server");
   const supabaseUrl = getServerRuntimeEnv("SUPABASE_URL");
   const serviceRoleKey = getServerRuntimeEnv("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error("Tender Watch server configuration is missing Supabase runtime credentials.");
   }
-  return createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  return createServerSupabaseClient(supabaseUrl, serviceRoleKey);
 }
 
 
