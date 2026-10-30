@@ -132,7 +132,41 @@ interface ScrapeErr {
 }
 
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
-async function directFetchFallback(url: string): Promise<ScrapeOk> { try { const controller = new AbortController(); const timeoutId = setTimeout(() => controller.abort(), 20000); const res = await fetch(url, { signal: controller.signal, headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" } }).finally(() => clearTimeout(timeoutId)); if (!res.ok) return { ok: true, markdown: "" }; const html = await res.text(); const markdown = html.replace(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gis, " [$2]($1) ").replace(/<\/(td|th)>/gi, " | ").replace(/<\/(tr|p)>|<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/[ \t]+/g, " ").replace(/\n\s*\n+/g, "\n"); return { ok: true, markdown: markdown.trim() }; } catch { return { ok: true, markdown: "" }; } }
+async function directFetchFallback(url: string): Promise<ScrapeOk> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 20_000);
+
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+    });
+    if (!res.ok) return { ok: true, markdown: "" };
+
+    const html = await res.text();
+    const markdown = html
+      .replace(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gis, " [$2]($1) ")
+      .replace(/<\/(td|th)>/gi, " | ")
+      .replace(/<\/(tr|p)>|<br\s*\/?>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\n\s*\n+/g, "\n");
+
+    return { ok: true, markdown: markdown.trim() };
+  } catch {
+    return { ok: true, markdown: "" };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 async function firecrawlScrape(url: string, shouldStop?: () => Promise<boolean>): Promise<ScrapeOk | ScrapeErr> {
   // Read from the server runtime binding first, with process.env as fallback.
@@ -140,11 +174,7 @@ async function firecrawlScrape(url: string, shouldStop?: () => Promise<boolean>)
   // process.env, so reading process.env alone can falsely report a missing key.
   const fcKey = getServerRuntimeEnv("FIRECRAWL_API_KEY");
   if (!fcKey) {
-    return {
-      oconst fcKey = getServerRuntimeEnv("FIRECRAWL_API_KEY"); if (!fcKey) return directFetchFallback(url);return directFetchFallback(url);k: false,
-      error:
-        "FIRECRAWL_API_KEY is not available to the deployed server runtime. Verify the Lovable project secret is saved for this deployment, then sync and publish the latest source.",
-    };
+    return directFetchFallback(url);
   }
 
   try {
@@ -179,7 +209,7 @@ async function firecrawlScrape(url: string, shouldStop?: () => Promise<boolean>)
     }
 
     if (!res.ok) {
-      iif (!res.ok) return directFetchFallback(url);if (!res.ok) return directFetchFallback(url);f (res.status === 401 || res.status === 403) {
+      if (res.status === 401 || res.status === 403) {
         return {
           ok: false,
           error: `Firecrawl authentication failed (${res.status}). Check that FIRECRAWL_API_KEY is valid and available to this deployment.`,
