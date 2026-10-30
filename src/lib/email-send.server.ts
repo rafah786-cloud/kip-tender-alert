@@ -5,7 +5,6 @@
 
 import * as React from 'react'
 import { render } from 'react-email'
-import { createClient } from '@supabase/supabase-js'
 import { TEMPLATES } from './email-templates/registry'
 
 const SITE_NAME = 'Tender Watch'
@@ -35,9 +34,8 @@ export async function sendTenderEmail(opts: {
   const template = TEMPLATES[opts.templateName]
   if (!template) return { ok: false, reason: 'unknown_template' }
 
-  const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  })
+  const { createServerSupabaseClient } = await import('./runtime-env.server')
+  const supabase = createServerSupabaseClient(supabaseUrl, supabaseServiceKey)
 
   const recipient = opts.recipientEmail.trim()
   const normalizedEmail = recipient.toLowerCase()
