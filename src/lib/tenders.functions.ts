@@ -259,20 +259,8 @@ export const startCheckInBackground = createServerFn({ method: "POST" }).handler
   async () => {
     await requireAdminAccess();
     const sb = await getServerClient();
-    const { getServerRuntimeEnv } = await import("./runtime-env.server");
-    if (!getServerRuntimeEnv("FIRECRAWL_API_KEY")) {
-      const message =
-        "Cannot start scan: FIRECRAWL_API_KEY is not available to the deployed server runtime. Confirm the secret is saved for this Lovable deployment, then sync and publish the latest source.";
-      await sb
-        .from("settings")
-        .update({
-          last_run_status: "error",
-          last_run_message: message,
-          last_run_at: new Date().toISOString(),
-        })
-        .eq("id", 1);
-      throw new Error(message);
-    }
+    // Firecrawl is optional. The scraper falls back to direct HTML fetching
+    // when FIRECRAWL_API_KEY is unavailable, so don't block background scans here.
 
     // Recover a scan lock only if the worker has stopped updating for 30 minutes.
     // This prevents a failed webhook/worker from permanently disabling Scan Now.
