@@ -12,7 +12,7 @@ async function checkAuth(request: Request): Promise<Response | null> {
 
   const header = request.headers.get("authorization") ?? "";
   const provided = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
-  if (!provided) return new Response("Tender Watch auth probe: bearer header missing", { status: 401, headers: { "X-Tender-Watch-Auth-Probe": "cron-auth-probe-3" } });
+  if (!provided) return new Response("Tender Watch auth probe: bearer header missing", { status: 401, headers: { "X-Tender-Watch-Auth-Probe": "cron-auth-probe-4" } });
 
   const configuredSecret = getServerRuntimeEnv("CRON_SECRET");
   if (configuredSecret && provided === configuredSecret) return null;
@@ -20,7 +20,7 @@ async function checkAuth(request: Request): Promise<Response | null> {
   const supabaseUrl = getServerRuntimeEnv("SUPABASE_URL");
   const serviceRoleKey = getServerRuntimeEnv("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !serviceRoleKey) {
-    return new Response("Tender Watch auth probe: Supabase server credentials missing", { status: 503, headers: { "X-Tender-Watch-Auth-Probe": "cron-auth-probe-3" } });
+    return new Response("Tender Watch auth probe: Supabase server credentials missing", { status: 503, headers: { "X-Tender-Watch-Auth-Probe": "cron-auth-probe-4" } });
   }
 
   try {
@@ -33,7 +33,7 @@ async function checkAuth(request: Request): Promise<Response | null> {
         code: error.code,
         message: error.message,
       });
-      return new Response(`Tender Watch auth probe: Supabase RPC failed (${error.code ?? "unknown"})`, { status: 503, headers: { "X-Tender-Watch-Auth-Probe": "cron-auth-probe-3" } });
+      return new Response(`Tender Watch auth probe: Supabase RPC failed (${error.code ?? "unknown"})`, { status: 503, headers: { "X-Tender-Watch-Auth-Probe": "cron-auth-probe-4" } });
     }
     if (data === true) return null;
   } catch (error) {
@@ -41,7 +41,7 @@ async function checkAuth(request: Request): Promise<Response | null> {
     return new Response("Server not configured", { status: 503 });
   }
 
-  return new Response("Tender Watch auth probe: Vault token rejected", { status: 401, headers: { "X-Tender-Watch-Auth-Probe": "cron-auth-probe-3" } });
+  return new Response("Tender Watch auth probe: Vault token rejected", { status: 401, headers: { "X-Tender-Watch-Auth-Probe": "cron-auth-probe-4" } });
 }
 
 export const Route = createFileRoute("/api/public/hooks/check-tenders")({
