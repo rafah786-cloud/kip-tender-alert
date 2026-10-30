@@ -1,7 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
 import { createFileRoute } from "@tanstack/react-router";
 import { runTenderCheck } from "@/lib/tenders.runner.server";
-import { getServerRuntimeEnv } from "@/lib/runtime-env.server";
+import { createServerSupabaseClient, getServerRuntimeEnv } from "@/lib/runtime-env.server";
 
 // Called by pg_cron. Accept a configured server CRON_SECRET or a dedicated
 // high-entropy token stored in Supabase Vault. Never accept tokens in query URLs.
@@ -20,13 +19,18 @@ async function checkAuth(request: Request): Promise<Response | null> {
   }
 
   try {
-    const sb = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
+    const sb = createServerSupabaseClient(supabaseUrl, serviceRoleKey);
     const { data, error } = await sb.rpc("is_valid_tender_cron_secret", {
       candidate_secret: provided,
     });
-    if (!error && data === true) return null;
+    if (error) {
+      console.error("[check-tenders] scheduler-token RPC failed", {
+        code: error.code,
+        message: error.message,
+      });
+      return new Response("Scheduler token validation unavailable", { status: 503 });
+    }
+    if (data === true) return null;
   } catch (error) {
     console.error("[check-tenders] scheduler-token validation failed", error);
     return new Response("Server not configured", { status: 503 });
