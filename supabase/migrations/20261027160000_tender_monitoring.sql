@@ -76,7 +76,7 @@ BEGIN
   END IF;
 
   SELECT net.http_post(
-    url := 'https://kip-tender-alert.lovable.app/api/public/hooks/check-tenders',
+    url := 'https://tenders.zizzmattress.com/api/public/hooks/check-tenders',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
       'Authorization', 'Bearer ' || scheduler_token
@@ -115,7 +115,7 @@ BEGIN
       '0 */2 * * *',
       $task$
         SELECT net.http_post(
-          url := 'https://kip-tender-alert.lovable.app/api/public/hooks/check-tenders',
+          url := 'https://tenders.zizzmattress.com/api/public/hooks/check-tenders',
           headers := jsonb_build_object(
             'Content-Type', 'application/json',
             'Authorization', 'Bearer ' || (
