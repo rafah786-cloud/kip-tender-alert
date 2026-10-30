@@ -1,10 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { runTenderCheck } from "@/lib/tenders.runner.server";
+import { isAdminSession, isSameOriginRequest } from "@/lib/admin-session.server";
 import { createServerSupabaseClient, getServerRuntimeEnv } from "@/lib/runtime-env.server";
 
 // Called by pg_cron. Accept a configured server CRON_SECRET or a dedicated
 // high-entropy token stored in Supabase Vault. Never accept tokens in query URLs.
 async function checkAuth(request: Request): Promise<Response | null> {
+  // Interactive manual scans are allowed only from this origin with a valid
+  // signed administrator session. Scheduled scans continue using the Vault token.
+  if (isSameOriginRequest(request) && await isAdminSession(request)) return null;
+
   const header = request.headers.get("authorization") ?? "";
   const provided = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
   if (!provided) return new Response("Tender Watch auth probe: bearer header missing", { status: 401, headers: { "X-Tender-Watch-Auth-Probe": "cron-auth-probe-3" } });
