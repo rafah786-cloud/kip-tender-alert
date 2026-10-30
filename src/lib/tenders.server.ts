@@ -152,11 +152,11 @@ async function directFetchFallback(url: string): Promise<ScrapeOk | ScrapeErr> {
 
     const html = await res.text();
     const markdown = html
-      .replace(/<!--[\\s\\S]*?-->/g, " ")
-      .replace(/<(script|style|noscript)[^>]*>[\\s\\S]*?<\\/\\1>/gi, " ")
-      .replace(/<a\\s+[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\\/a>/gis, " [$2]($1) ")
-      .replace(/<\\/(td|th)>/gi, " | ")
-      .replace(/<\\/(tr|p)>|<br\\s*\\/?>/gi, "\\n")
+      .replace(/<!--[\s\S]*?-->/g, " ")
+      .replace(/<(script|style|noscript)[^>]*>[\s\S]*?<\/\1>/gi, " ")
+      .replace(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gis, " [$2]($1) ")
+      .replace(/<\/(td|th)>/gi, " | ")
+      .replace(/<\/(tr|p)>|<br\s*\/?>/gi, "\n")
       .replace(/<[^>]+>/g, "")
       .replace(/&nbsp;/g, " ")
       .replace(/&amp;/g, "&")
@@ -164,8 +164,8 @@ async function directFetchFallback(url: string): Promise<ScrapeOk | ScrapeErr> {
       .replace(/&gt;/g, ">")
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'")
-      .replace(/[ \\t]+/g, " ")
-      .replace(/\\n\\s*\\n+/g, "\\n")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\n\s*\n+/g, "\n")
       .trim();
 
     if (!markdown) {
