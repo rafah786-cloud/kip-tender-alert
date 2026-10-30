@@ -11,7 +11,7 @@ Or any other websites if any , central government or Kerala state government onl
 
 This project was built with [Lovable](https://lovable.dev).
 
-**Live app**: https://kip-tender-alert.lovable.app
+**Live app**: https://tenders.zizzmattress.com
 
 ## Build with Lovable
 
@@ -44,4 +44,4 @@ Tender Watch supports an administrator-only **Stop Scan** action while a scan is
 
 ## Sync and deployment
 
-Pushing a commit to the active synced branch (currently `main`) updates the Lovable project code and editor preview when Git sync receives the push. A GitHub push does **not** publish the public website. After verifying the editor preview, publish the project in Lovable to update `https://kip-tender-alert.lovable.app`.
+Pushing a commit to the active synced branch (currently `main`) updates the Lovable project code and editor preview when Git sync receives the push. A GitHub push does **not** publish the public website. After verifying the editor preview, publish the project in Lovable to update `https://tenders.zizzmattress.com`.
