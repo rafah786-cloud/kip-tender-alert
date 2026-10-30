@@ -135,7 +135,7 @@ const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
 let firecrawlCooldownUntil = 0;
 async function directFetchFallback(url: string): Promise<ScrapeOk | ScrapeErr> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 20_000);
+  const timeoutId = setTimeout(() => controller.abort(), 12_000);
 
   try {
     const res = await fetch(url, {
@@ -475,7 +475,7 @@ export async function scrapeAllSources(
 ): Promise<{
   results: { source: TenderSource; matches: ParsedTender[]; error?: string }[];
 }> {
-  const raw = await mapWithConcurrency([...new Map(TENDER_SOURCES.map((source) => [source.key, source])).values()], 2, async (source) => {
+  const raw = await mapWithConcurrency([...new Map(TENDER_SOURCES.map((source) => [source.key, source])).values()], 4, async (source) => {
     if (shouldStop && await shouldStop()) {
       return { source, matches: [] as ParsedTender[], error: "Scan stopped by administrator." };
     }
