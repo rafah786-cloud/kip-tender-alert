@@ -354,7 +354,34 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
   }, [tendersQ.data]);
 
   const runMut = useMutation({
-    mutationFn: () => runCheckFn(),
+    mutationFn: async () => {
+      const result = await runCheckFn();
+      if (!result.already_running) {
+        void fetch("/api/public/hooks/check-tenders", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+          keepalive: true,
+        })
+          .then(async (response) => {
+            if (!response.ok) {
+              const detail = (await response.text()).slice(0, 240);
+              console.error("[tender-watch] manual scan request failed", response.status, detail);
+              toast.error(`Could not start scan (${response.status}). ${detail}`);
+              await qc.invalidateQueries({ queryKey: ["settings"] });
+            } else {
+              await qc.invalidateQueries({ queryKey: ["settings"] });
+            }
+          })
+          .catch(async (error) => {
+            console.error("[tender-watch] manual scan request failed", error);
+            toast.error("Could not reach the scan service. Check your connection and try again.");
+            await qc.invalidateQueries({ queryKey: ["settings"] });
+          });
+      }
+      return result;
+    },
     onSuccess: (r) => {
       if (r.already_running) {
         toast.info("A check is already running in the background.");
