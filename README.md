@@ -41,3 +41,7 @@ npm run dev
 ## Stop Scan
 
 Tender Watch supports an administrator-only **Stop Scan** action while a scan is running. A stop request updates the scan status and the worker checks for cancellation between sources, before document analysis, and before saving results. In-flight Firecrawl requests are aborted where supported; a request that has already reached an external service may take a short time to terminate.
+
+## Sync and deployment
+
+Pushing a commit to the active synced branch (currently `main`) updates the Lovable project code and editor preview when Git sync receives the push. A GitHub push does **not** publish the public website. After verifying the editor preview, publish the project in Lovable to update `https://kip-tender-alert.lovable.app`.
