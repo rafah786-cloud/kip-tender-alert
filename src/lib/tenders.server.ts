@@ -132,7 +132,8 @@ interface ScrapeErr {
 }
 
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
-async function directFetchFallback(url: string): Promise<ScrapeOk> {
+let firecrawlCooldownUntil = 0;
+async function directFetchFallback(url: string): Promise<ScrapeOk | ScrapeErr> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 20_000);
 
@@ -145,24 +146,35 @@ async function directFetchFallback(url: string): Promise<ScrapeOk> {
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       },
     });
-    if (!res.ok) return { ok: true, markdown: "" };
+    if (!res.ok) {
+      return { ok: false, error: `Direct HTML fallback failed (${res.status}).` };
+    }
 
     const html = await res.text();
     const markdown = html
-      .replace(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gis, " [$2]($1) ")
-      .replace(/<\/(td|th)>/gi, " | ")
-      .replace(/<\/(tr|p)>|<br\s*\/?>/gi, "\n")
+      .replace(/<!--[\\s\\S]*?-->/g, " ")
+      .replace(/<(script|style|noscript)[^>]*>[\\s\\S]*?<\\/\\1>/gi, " ")
+      .replace(/<a\\s+[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\\/a>/gis, " [$2]($1) ")
+      .replace(/<\\/(td|th)>/gi, " | ")
+      .replace(/<\\/(tr|p)>|<br\\s*\\/?>/gi, "\\n")
       .replace(/<[^>]+>/g, "")
       .replace(/&nbsp;/g, " ")
       .replace(/&amp;/g, "&")
       .replace(/&lt;/g, "<")
       .replace(/&gt;/g, ">")
-      .replace(/[ \t]+/g, " ")
-      .replace(/\n\s*\n+/g, "\n");
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/[ \\t]+/g, " ")
+      .replace(/\\n\\s*\\n+/g, "\\n")
+      .trim();
 
-    return { ok: true, markdown: markdown.trim() };
-  } catch {
-    return { ok: true, markdown: "" };
+    if (!markdown) {
+      return { ok: false, error: "Direct HTML fallback returned an empty page." };
+    }
+    return { ok: true, markdown };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return { ok: false, error: `Direct HTML fallback failed: ${reason.slice(0, 240)}` };
   } finally {
     clearTimeout(timeoutId);
   }
@@ -173,7 +185,7 @@ async function firecrawlScrape(url: string, shouldStop?: () => Promise<boolean>)
   // Lovable's deployed Nitro/Cloudflare runtime does not always permit writes to
   // process.env, so reading process.env alone can falsely report a missing key.
   const fcKey = getServerRuntimeEnv("FIRECRAWL_API_KEY");
-  if (!fcKey) {
+  if (!fcKey || Date.now() < firecrawlCooldownUntil) {
     return directFetchFallback(url);
   }
 
@@ -209,21 +221,32 @@ async function firecrawlScrape(url: string, shouldStop?: () => Promise<boolean>)
     }
 
     if (!res.ok) {
-      if (res.status === 401 || res.status === 403) {
-        return {
-          ok: false,
-          error: `Firecrawl authentication failed (${res.status}). Check that FIRECRAWL_API_KEY is valid and available to this deployment.`,
-        };
-      }
-      if (res.status === 402) {
-        return { ok: false, error: "Firecrawl credits/quota exhausted (402). Check your Firecrawl account usage." };
-      }
+      const firecrawlError =
+        res.status === 401 || res.status === 403
+          ? `Firecrawl authentication failed (${res.status}).`
+          : res.status === 402
+            ? "Firecrawl credits/quota exhausted (402)."
+            : res.status === 429
+              ? "Firecrawl rate limit reached (429)."
+              : `Firecrawl request failed (${res.status}): ${JSON.stringify(json).slice(0, 240)}`;
+
       if (res.status === 429) {
-        return { ok: false, error: "Firecrawl rate limit reached (429). Retry after the account cooldown." };
+        const retryAfter = Number(res.headers.get("retry-after"));
+        const cooldownMs =
+          Number.isFinite(retryAfter) && retryAfter > 0
+            ? Math.min(retryAfter, 300) * 1000
+            : 60_000;
+        firecrawlCooldownUntil = Math.max(firecrawlCooldownUntil, Date.now() + cooldownMs);
       }
+
+      // Keep scanning when Firecrawl is throttled or the key/quota is unavailable.
+      // Direct HTML fetch is best-effort; preserve the Firecrawl error when it fails.
+      const fallback = await directFetchFallback(url);
+      if (fallback.ok && fallback.markdown.length > 0) return fallback;
+
       return {
         ok: false,
-        error: `Firecrawl request failed (${res.status}): ${JSON.stringify(json).slice(0, 300)}`,
+        error: `${firecrawlError} Direct fallback: ${fallback.error ?? "no page content"}`,
       };
     }
 
@@ -452,7 +475,7 @@ export async function scrapeAllSources(
 ): Promise<{
   results: { source: TenderSource; matches: ParsedTender[]; error?: string }[];
 }> {
-  const raw = await mapWithConcurrency(TENDER_SOURCES, 4, async (source) => {
+  const raw = await mapWithConcurrency([...new Map(TENDER_SOURCES.map((source) => [source.key, source])).values()], 2, async (source) => {
     if (shouldStop && await shouldStop()) {
       return { source, matches: [] as ParsedTender[], error: "Scan stopped by administrator." };
     }
