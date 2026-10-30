@@ -294,19 +294,8 @@ export const startCheckInBackground = createServerFn({ method: "POST" }).handler
       })
       .eq("id", 1);
 
-    // The database reads its scheduler token from Vault; this legacy argument is
-    // retained for backward compatibility and is intentionally not a credential.
-    const { error } = await sb.rpc("trigger_tender_check", { secret: "" });
-    if (error) {
-      await sb
-        .from("settings")
-        .update({
-          last_run_status: "error",
-          last_run_message: `Failed to start background check: ${error.message}`,
-        })
-        .eq("id", 1);
-      throw new Error(error.message);
-    }
+    // The browser launches the same-origin webhook with its signed admin cookie.
+    // This avoids the legacy Vault trigger RPC, whose stored URL redirects across hosts.
     return { ok: true, already_running: false as const };
   },
 );
