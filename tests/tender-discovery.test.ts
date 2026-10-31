@@ -66,7 +66,7 @@ describe("Tender Finder discovery regression tests", () => {
     expect(extractDateNearLabel("Bid End Date/Time 02-11-2099 18:00:00", ["Bid End Date/Time"])).toBe("02-11-2099 18:00:00");
     expect(extractDateNearLabel("Bid End Date/Time 02-Nov-2099 06:00 PM", ["Bid End Date/Time"])).toBe("02-Nov-2099 06:00 PM");
     expect(extractDateNearLabel("Bid End Date 2099-11-02", ["Bid End Date"])).toBe("02-11-2099");
-    expect(extractDateNearLabel("Bid End Date 02 November 2099 6:00 PM", ["Bid End Date"])).toBe("02-02-2099 6:00 PM");
+    expect(extractDateNearLabel("Bid End Date 02 November 2099 6:00 PM", ["Bid End Date"])).toBe("02-November-2099 6:00 PM");
     expect(extractTenderClosingDate("Bid End Date/Time | 02-Nov-2099 06:00 PM")).toBe("02-Nov-2099 06:00 PM");
   });
 
