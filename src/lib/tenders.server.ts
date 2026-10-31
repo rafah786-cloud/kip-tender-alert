@@ -400,8 +400,8 @@ function termHits(text: string, term: string, mode: MatchMode): boolean {
   if (variants.length === 0) return false;
   if (mode === "phrase") return variants.some((variant) => text.includes(variant));
   return variants.some((variant) => {
-    const pattern = escapeRe(variant).replace(/\\ /g, "[\\s_-]+");
-    return new RegExp("(^|[^a-z0-9])" + pattern + "([^a-z0-9]|$)", "i").test(text);
+    const re = new RegExp("(^|[^a-z0-9])" + escapeRe(variant) + "([^a-z0-9]|$)", "i");
+    return re.test(text);
   });
 }
 
@@ -641,7 +641,6 @@ async function scrapeSourcesWithBatch(
       headers: authHeaders,
       body: JSON.stringify({
         urls: uniqueUrls,
-        maxConcurrency: 2,
         ignoreInvalidURLs: true,
         formats: [{ type: "markdown" }],
         onlyMainContent: true,
@@ -784,6 +783,171 @@ async function scrapeSourcesWithBatch(
   return results;
 }
 
+interface FirecrawlWebResult {
+  title?: string;
+  url?: string;
+  description?: string;
+}
+
+interface FirecrawlSearchPayload {
+  success?: boolean;
+  data?: { web?: FirecrawlWebResult[] };
+  error?: string;
+}
+
+function isOfficialProcurementHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^www\./, "");
+  return host === "bidplus.gem.gov.in"
+    || host.endsWith(".gov.in")
+    || host === "gov.in"
+    || host.endsWith(".nic.in")
+    || host === "nic.in"
+    || host.endsWith(".nprocure.com");
+}
+
+function extractDateNearLabel(text: string, labels: string[]): string | undefined {
+  for (const label of labels) {
+    const re = new RegExp(escapeRe(label) + "[^0-9]{0,40}(\\d{1,2}[-/]\\d{1,2}[-/]\\d{4})(?:\\s+(\\d{1,2}:\\d{2}(?::\\d{2})?))?", "i");
+    const match = text.match(re);
+    if (match) return match[1] + (match[2] ? " " + match[2] : "");
+  }
+  return undefined;
+}
+
+function searchResultTenderTitle(title: string, description: string): string {
+  const combined = title + "\n" + description;
+  const labelled = combined.match(/(?:Tender Title|Work Description|Title)\s*[:|]\s*[*_"]*([^|\n*"]{10,220})/i);
+  if (labelled?.[1]) return labelled[1].replace(/\s+/g, " ").trim().slice(0, 500);
+  const procurement = description.match(/(?:procurement|purchase|supply) of [^\|\n.]{8,180}/i);
+  if (procurement?.[0]) return procurement[0].replace(/\s+/g, " ").trim().slice(0, 500);
+  return title.replace(/^\s*\[(?:PDF|DOCX?|XLSX?)\]\s*/i, "").replace(/\s+/g, " ").trim().slice(0, 500);
+}
+
+/**
+ * A second discovery path for official procurement pages. This is deliberately
+ * separate from portal scraping: public search indexes can expose tender PDFs
+ * whose source portals are CAPTCHA-gated or client-rendered. Search matches
+ * remain candidates only; the existing AI/document audit still decides
+ * whether an opportunity is actually relevant.
+ */
+async function searchOfficialTenderIndex(
+  opts: MatchOptions,
+  shouldStop?: () => Promise<boolean>,
+): Promise<{ source: TenderSource; matches: ParsedTender[]; error?: string }[]> {
+  const apiKey = getServerRuntimeEnv("FIRECRAWL_API_KEY");
+  const searchSource: TenderSource = {
+    key: "official_tender_index",
+    label: "Official procurement search index",
+    url: "https://www.firecrawl.dev/",
+  };
+  if (!apiKey) {
+    return [{ source: searchSource, matches: [], error: "FIRECRAWL_API_KEY is not configured; indexed discovery is unavailable." }];
+  }
+  if (shouldStop && await shouldStop()) {
+    return [{ source: searchSource, matches: [], error: "Scan stopped by administrator." }];
+  }
+
+  const query = '(mattress OR mattresses OR "bed mattress" OR "hospital mattress" OR "ICU mattress" OR "coir mattress" OR "foam mattress" OR "air mattress" OR "bed sheets" OR bedsheets OR pillow OR pillows OR bedding OR "hospital bed") (tender OR bid OR procurement OR "Bid End Date") India government GeM';
+  let response: Response;
+  try {
+    response = await fetch("https://api.firecrawl.dev/v2/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + apiKey,
+      },
+      body: JSON.stringify({
+        query,
+        sources: ["web"],
+        country: "IN",
+        limit: 25,
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (error) {
+    return [{ source: searchSource, matches: [], error: "Official tender index request failed: " + (error instanceof Error ? error.message : String(error)).slice(0, 260) }];
+  }
+
+  const responseText = await response.text().catch(() => "");
+  let payload: FirecrawlSearchPayload = {};
+  try {
+    payload = responseText ? JSON.parse(responseText) as FirecrawlSearchPayload : {};
+  } catch {
+    payload = { error: responseText.slice(0, 260) };
+  }
+  if (!response.ok || payload.success === false) {
+    const reason = response.status === 401 || response.status === 403
+      ? "Firecrawl search authentication failed (" + response.status + ")."
+      : response.status === 402
+        ? "Firecrawl search quota exhausted (402)."
+        : response.status === 429
+          ? "Firecrawl search was rate-limited (429)."
+          : "Firecrawl search failed (" + response.status + "): " + String(payload.error ?? "").slice(0, 220);
+    return [{ source: searchSource, matches: [], error: reason }];
+  }
+
+  const byHost = new Map<string, { source: TenderSource; matches: ParsedTender[] }>();
+  for (const item of payload.data?.web ?? []) {
+    if (!item.url) continue;
+    let url: URL;
+    try { url = new URL(item.url); } catch { continue; }
+    if (url.protocol !== "https:" && url.protocol !== "http:") continue;
+    if (!isOfficialProcurementHost(url.hostname)) continue;
+
+    const title = item.title ?? "";
+    const description = item.description ?? "";
+    const searchable = (title + "\n" + description).slice(0, 5000);
+    const matched = findKeywordMatches(searchable.toLowerCase(), opts);
+    if (matched.length === 0) continue;
+
+    const host = url.hostname.toLowerCase();
+    let group = byHost.get(host);
+    if (!group) {
+      group = {
+        source: {
+          key: "index_" + sha1(host),
+          label: "Official procurement search — " + host,
+          url: url.origin + "/",
+        },
+        matches: [],
+      };
+      byHost.set(host, group);
+    }
+
+    const tenderId = searchable.match(/\bGEM\/\d{4}\/B\/\d+\b/i)?.[0]
+      ?? searchable.match(/\b\d{4}_[A-Z0-9]+_\d+_\d+\b/i)?.[0]
+      ?? url.href;
+    const fingerprint = sha1(host + "|" + tenderId.toLowerCase());
+    if (group.matches.some((row) => row.fingerprint === fingerprint)) continue;
+
+    group.matches.push({
+      title: searchResultTenderTitle(title, description) || title || host,
+      matched_keywords: matched,
+      published_at: extractDateNearLabel(searchable, ["Published Date", "Published on", "Dated"]),
+      closing_at: extractDateNearLabel(searchable, ["Bid End Date/Time", "Bid End Date", "Bid Submission End Date", "Closing Date"]),
+      tender_url: url.href,
+      raw_excerpt: searchable.slice(0, 800),
+      fingerprint,
+    });
+  }
+
+  const grouped = [...byHost.values()];
+  return grouped.length ? grouped : [{ source: searchSource, matches: [] }];
+}
+
+function isPortalChallengePage(markdown: string): string | null {
+  const lower = markdown.toLowerCase();
+  if (lower.includes("provide captcha and click on search button to list all active tenders")
+    || (lower.includes("enter captcha") && lower.includes("active tenders") && lower.includes("tender title"))) {
+    return "Portal returned a CAPTCHA-gated tender list; this route did not expose public tender rows.";
+  }
+  if ((lower.includes("enable javascript") || lower.includes("javascript is required"))
+    && !lower.includes("tender title")) {
+    return "Portal returned a JavaScript-only shell; no server-rendered tender rows were available.";
+  }
+  return null;
+}
+
 export async function scrapeAllSources(
   opts?: MatchOptions,
   shouldStop?: () => Promise<boolean>,
@@ -800,8 +964,30 @@ export async function scrapeAllSources(
     if (!scraped.ok) {
       return { source, matches: [] as ParsedTender[], error: scraped.error };
     }
+    const challenge = isPortalChallengePage(scraped.markdown);
+    if (challenge) {
+      return { source, matches: [] as ParsedTender[], error: challenge };
+    }
     return { source, matches: parseListing(source, scraped.markdown, opts) };
   });
+
+  // Indexed official-source discovery complements direct portal feeds, catching
+  // notices and PDFs that are not rendered on public listing pages.
+  if (opts) {
+    try {
+      raw.push(...await searchOfficialTenderIndex(opts, shouldStop));
+    } catch (error) {
+      raw.push({
+        source: {
+          key: "official_tender_index",
+          label: "Official procurement search index",
+          url: "https://www.firecrawl.dev/",
+        },
+        matches: [],
+        error: "Indexed tender discovery failed: " + (error instanceof Error ? error.message : String(error)).slice(0, 260),
+      });
+    }
+  }
 
   // Cross-menu dedupe: the same tender shows up under Latest, By Location,
   // By Organisation etc. Keep the first occurrence keyed on a normalised title.
