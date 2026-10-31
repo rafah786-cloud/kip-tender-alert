@@ -624,7 +624,7 @@ async function scrapeSourcesWithBatch(
   // a page shell without a parseable tender listing.
   const directItems = await mapWithConcurrency(sources, 10, async (source) => {
     if (shouldStop && await shouldStop()) {
-      return { url: canonicalScrapeUrl(source.url), result: { ok: false as const, error: "Scan stopped by administrator." } };
+      return { url: canonicalScrapeUrl(source.url), result: { ok: false as const, error: "Scan stopped by administrator." }, needsBrowser: false };
     }
     const url = canonicalScrapeUrl(source.url);
     const fetched = await directFetchFallback(source.url);
