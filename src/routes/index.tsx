@@ -747,7 +747,6 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
           <SettingsPanel
             keywords={settingsQ.data?.keywords ?? []}
             excludeKeywords={settingsQ.data?.exclude_keywords ?? []}
-            matchMode={settingsQ.data?.match_mode ?? "any"}
             notifyEmail={settingsQ.data?.notify_email ?? null}
             emailSuppressed={settingsQ.data?.email_suppressed ?? false}
             lastMessage={settingsQ.data?.last_run_message ?? null}
@@ -1155,13 +1154,6 @@ function SettingsPanel({
   useEffect(() => setMinConf(aiMinConfidence), [aiMinConfidence]);
   useEffect(() => setIncludeMaybe(aiIncludeMaybe), [aiIncludeMaybe]);
 
-
-  const modes: { value: MatchMode; label: string; hint: string }[] = [
-    { value: "any", label: "Any word", hint: "Match if any include keyword appears (word match)." },
-    { value: "all", label: "All words", hint: "Match only if every include keyword appears." },
-    { value: "phrase", label: "Exact phrase", hint: "Match the keyword as a literal substring." },
-  ];
-  const activeMode = modes.find((m) => m.value === mode) ?? modes[0];
 
   return (
     <Card className="p-4 space-y-5">
