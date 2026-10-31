@@ -134,6 +134,26 @@ interface ScrapeErr {
 }
 
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
+export function htmlToTenderMarkdown(html: string): string {
+  return html
+    .replace(/<!--[\\s\\S]*?-->/g, " ")
+    .replace(/<(script|style|noscript)[^>]*>[\\s\\S]*?<\\/\\1>/gi, " ")
+    .replace(/<a\\s+[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\\/a>/gis, " [$2]($1) ")
+    .replace(/<tr\\b[^>]*>/gi, "\\n| ")
+    .replace(/<\\/(td|th)>/gi, " | ")
+    .replace(/<\\/(tr|p)>|<br\\s*\\/?>/gi, "\\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \\t]+/g, " ")
+    .replace(/\\n\\s*\\n+/g, "\\n")
+    .trim();
+}
+
 async function directFetchFallback(url: string): Promise<ScrapeOk | ScrapeErr> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 8_000);
@@ -152,23 +172,7 @@ async function directFetchFallback(url: string): Promise<ScrapeOk | ScrapeErr> {
     }
 
     const html = await res.text();
-    const markdown = html
-      .replace(/<!--[\s\S]*?-->/g, " ")
-      .replace(/<(script|style|noscript)[^>]*>[\s\S]*?<\/\1>/gi, " ")
-      .replace(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gis, " [$2]($1) ")
-      .replace(/<tr\b[^>]*>/gi, "\n| ")
-      .replace(/<\/(td|th)>/gi, " | ")
-      .replace(/<\/(tr|p)>|<br\s*\/?>/gi, "\n")
-      .replace(/<[^>]+>/g, "")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/[ \t]+/g, " ")
-      .replace(/\n\s*\n+/g, "\n")
-      .trim();
+    const markdown = htmlToTenderMarkdown(html);
 
     if (!markdown) {
       return { ok: false, error: "Direct HTML fallback returned an empty page." };
@@ -200,7 +204,7 @@ export async function diagnoseFirecrawlScraper(): Promise<{
   // to the source that received it so subsequent portal requests still run.
   const cooldownMs = 0;
   const result = await firecrawlScrape(
-    "https://eprocure.gov.in/eprocure/app?page=FrontEndLatestActiveTenders&service=page",
+    "https://eprocure.gov.in/eprocure/app?service=restart",
   );
   return {
     keyConfigured,
