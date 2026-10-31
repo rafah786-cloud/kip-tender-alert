@@ -7,6 +7,7 @@ on:
       - "package.json"
       - "bun.lock"
       - "src/**"
+      - "tests/**"
       - "vite.config.ts"
       - "tsconfig.json"
       - ".github/workflows/dependency-security.yml"
@@ -64,6 +65,9 @@ jobs:
       - name: Lint source (currently advisory; repository-wide Prettier baseline is not clean)
         run: bun run lint
         continue-on-error: true
+
+      - name: Tender discovery regression tests
+        run: bun test tests/tender-discovery.test.ts
 
       - name: Build production bundle
         run: bun run build
