@@ -24,22 +24,45 @@ export interface RunResult {
 
 function isTenderDeadlinePassed(value: string | null | undefined): boolean {
   if (!value) return false;
-  const match = value.match(/(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?/i);
-  if (!match) return false;
-  const [, day, month, year, hourRaw = "23", minute = "59", second = "59", meridiem] = match;
-  let hour = Number(hourRaw);
+  let day: number;
+  let month: number;
+  let year: number;
+
+  const iso = value.match(/\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b/);
+  if (iso) {
+    year = Number(iso[1]);
+    month = Number(iso[2]) - 1;
+    day = Number(iso[3]);
+  } else {
+    const human = value.match(/\b(\d{1,2})[-/]([A-Za-z]{3,9}|\d{1,2})[-/](\d{4})\b/);
+    if (!human) return false;
+    day = Number(human[1]);
+    year = Number(human[3]);
+    const monthToken = human[2].toLowerCase();
+    if (/^\d{1,2}$/.test(monthToken)) {
+      month = Number(monthToken) - 1;
+    } else {
+      const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+      month = monthNames.indexOf(monthToken.slice(0, 3));
+    }
+  }
+
+  if (month < 0 || month > 11 || day < 1 || day > 31) return false;
+  const time = value.match(/\b(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?\b/i);
+  let hour = time ? Number(time[1]) : 23;
+  const minute = time ? Number(time[2]) : 59;
+  const second = time?.[3] ? Number(time[3]) : 59;
+  const meridiem = time?.[4]?.toUpperCase();
   if (meridiem) {
     if (hour < 1 || hour > 12) return false;
-    if (meridiem.toUpperCase() === "AM") hour = hour === 12 ? 0 : hour;
+    if (meridiem === "AM") hour = hour === 12 ? 0 : hour;
     else hour = hour === 12 ? 12 : hour + 12;
   }
   // Government bid deadlines are published in Indian Standard Time (UTC+05:30).
-  const deadlineMs = Date.UTC(Number(year), Number(month) - 1, Number(day), hour, Number(minute), Number(second)) - (330 * 60 * 1000);
+  const deadlineMs = Date.UTC(year, month, day, hour, minute, second) - (330 * 60 * 1000);
   if (!Number.isFinite(deadlineMs)) return false;
   return deadlineMs < Date.now();
 }
-
-
 
 async function scanStopRequested(sb: ReturnType<typeof getServerClient>): Promise<boolean> {
   const { data } = await sb.from("settings").select("last_run_status").eq("id", 1).single();
