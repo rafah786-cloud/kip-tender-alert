@@ -22,7 +22,7 @@ export interface RunResult {
   message: string;
 }
 
-function isTenderDeadlinePassed(value: string | null | undefined): boolean {
+export function isTenderDeadlinePassed(value: string | null | undefined): boolean {
   if (!value) return false;
   let day: number;
   let month: number;
