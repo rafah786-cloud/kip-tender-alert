@@ -18,6 +18,8 @@ Rules:
 
 Return strict JSON: {"verdict":"yes|no|maybe","confidence":0-1,"reason":"<=30 words","category":"<short tag>","excerpt":"<<=240 chars quote from the doc that justifies the verdict>"}
 
+`;
+
 export interface DeepInput {
   title: string;
   organisation: string | null;
