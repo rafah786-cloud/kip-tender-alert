@@ -27,9 +27,10 @@ function isTenderDeadlinePassed(value: string | null | undefined): boolean {
   const match = value.match(/(\\d{1,2})[-/](\\d{1,2})[-/](\\d{4})(?:\\s+(\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?/);
   if (!match) return false;
   const [, day, month, year, hour = "23", minute = "59", second = "59"] = match;
-  const deadline = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
-  if (Number.isNaN(deadline.getTime())) return false;
-  return deadline.getTime() < Date.now();
+  // Government bid deadlines are published in Indian Standard Time (UTC+05:30).
+  const deadlineMs = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)) - (330 * 60 * 1000);
+  if (!Number.isFinite(deadlineMs)) return false;
+  return deadlineMs < Date.now();
 }
 
 
@@ -356,6 +357,10 @@ export async function runTenderCheck(): Promise<RunResult> {
     if (!c.deep) continue;
     const v = c.deep.verdict;
     const conf = c.deep.confidence ?? 0;
+    const verifiedClosing = c.deep.closing_at ?? c.closing_at;
+    // Search indexes retain historical PDFs. Use the deadline extracted from
+    // the actual tender detail document, not just the search snippet.
+    if (isTenderDeadlinePassed(verifiedClosing)) continue;
     const verdictOk = v === "yes" || (includeMaybe && v === "maybe");
     if (!verdictOk) continue;
     if (conf < minConfidence) continue;
@@ -381,7 +386,7 @@ export async function runTenderCheck(): Promise<RunResult> {
         title: m.title,
         organisation: m.organisation ?? null,
         published_at: m.published_at ?? null,
-        closing_at: m.closing_at ?? null,
+        closing_at: d.closing_at ?? m.closing_at ?? null,
         tender_url: m.tender_url ?? null,
         matched_keywords: d.category ? [d.category] : m.matched_keywords,
         raw_excerpt: m.raw_excerpt,
@@ -456,7 +461,7 @@ export async function runTenderCheck(): Promise<RunResult> {
         ? "partial"
         : "ok";
   const message =
-    `Scanned ${results.length} source pages; ${allRows.length} keyword matches (${expiredCount} expired excluded; ${freshRows.length} actionable and not previously saved) → deep-audited BOQ/contract docs for ${toDeep.length} → ${totalKept} kept at ≥${Math.round(minConfidence * 100)}% confidence${includeMaybe ? " (incl. maybe)" : " (yes only)"} (${inserted} new).` +
+    `Scanned ${results.length} source pages; ${allRows.length} keyword matches (${expiredCount} already-expired excluded before audit; ${freshRows.length} actionable and not previously saved) → deep-audited BOQ/contract docs for ${toDeep.length} → ${totalKept} kept at ≥${Math.round(minConfidence * 100)}% confidence after document-level deadline checks${includeMaybe ? " (incl. maybe)" : " (yes only)"} (${inserted} new).` +
     (aiError ? ` Stage-1 error: ${aiError}.` : "") +
     (docCheckErr ? ` Doc-check error: ${docCheckErr}.` : "") +
     emailNote +
