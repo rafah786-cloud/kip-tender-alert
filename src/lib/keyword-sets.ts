@@ -31,6 +31,7 @@ export const DEFAULT_ADDITIONAL_SEARCH_SETS: KeywordSet[] = [
       "public works",
       "civil works",
       "civil construction",
+      "construction",
       "construction work",
       "building construction",
       "building works",
