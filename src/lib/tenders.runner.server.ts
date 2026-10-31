@@ -81,9 +81,15 @@ export async function runTenderCheck(): Promise<RunResult> {
     "comforter", "quilt", "duvet", "bedspread", "hospital linen", "linen",
     "foam sheet", "PU foam", "coir mattress", "rubberised coir mattress",
   ];
-  const keywords = Array.isArray(settingsRow.keywords) && settingsRow.keywords.length
+  // Always retain the built-in mattress/bedding vocabulary and add the
+  // administrator's custom terms. This makes expanded discovery effective
+  // immediately, even before a database migration has been applied.
+  const savedKeywords = Array.isArray(settingsRow.keywords)
     ? settingsRow.keywords.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
-    : defaultKeywords;
+    : [];
+  const keywords = [...new Map(
+    [...defaultKeywords, ...savedKeywords].map((term) => [term.trim().toLowerCase(), term.trim()]),
+  ).values()];
   const excludeKeywords = Array.isArray(settingsRow.exclude_keywords)
     ? settingsRow.exclude_keywords.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
     : [];
