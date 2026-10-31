@@ -32,7 +32,6 @@ describe("Tender Finder discovery regression tests", () => {
       "| [Supply of 100 Foam Mattresses](https://procurement.example.gov.in/tender/123) | REF-123 | 02-Nov-2099 06:00 PM | 03-Nov-2099 10:00 AM |",
     ].join("\n");
     const rows = parseListing(source, markdown, { include: ["mattress"], exclude: [], mode: "any" });
-    console.log("HTML CONVERSION DIAGNOSTIC", JSON.stringify({ markdown, rows }));
     expect(rows).toHaveLength(1);
     expect(rows[0]?.title).toContain("Supply of 100 Foam Mattresses");
     expect(rows[0]?.tender_url).toBe("https://procurement.example.gov.in/tender/123");
@@ -60,6 +59,7 @@ describe("Tender Finder discovery regression tests", () => {
       </table>`;
     const markdown = htmlToTenderMarkdown(html);
     const rows = parseListing(source, markdown, { include: ["mattress"], exclude: [], mode: "any" });
+    console.log("HTML CONVERSION DIAGNOSTIC", JSON.stringify({ markdown, rows }));
     expect(rows).toHaveLength(1);
     expect(rows[0]?.title).toContain("Supply of 25 Foam Mattresses");
     expect(rows[0]?.closing_at).toBe("02-Nov-2099 06:00 PM");
