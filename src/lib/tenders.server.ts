@@ -807,8 +807,9 @@ function isOfficialProcurementHost(hostname: string): boolean {
 
 function extractDateNearLabel(text: string, labels: string[]): string | undefined {
   for (const label of labels) {
-    const re = new RegExp(escapeRe(label) + "[^0-9]{0,40}(\\d{1,2}[-/]\\d{1,2}[-/]\\d{4})(?:\\s+(\\d{1,2}:\\d{2}(?::\\d{2})?))?", "i");
-    const match = text.match(re);
+    const index = text.toLowerCase().indexOf(label.toLowerCase());
+    if (index < 0) continue;
+    const match = text.slice(index, index + 180).match(/(\\d{1,2}[-/]\\d{1,2}[-/]\\d{4})(?:\\s+(\\d{1,2}:\\d{2}(?::\\d{2})?))?/);
     if (match) return match[1] + (match[2] ? " " + match[2] : "");
   }
   return undefined;
