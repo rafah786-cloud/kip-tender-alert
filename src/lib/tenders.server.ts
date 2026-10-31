@@ -629,13 +629,8 @@ async function scrapeSourcesWithBatch(
     const fetched = await directFetchFallback(source.url);
     if (!fetched.ok) return { url, result: fetched, needsBrowser: true };
     const challenge = isPortalChallengePage(fetched.markdown);
-    const explicitEmpty = /no (?:active )?(?:tenders|bids|records|results) found|no records available|no data available/i.test(fetched.markdown);
-    const parsedRows = parseListing(source, fetched.markdown);
-    const publicTenderRows = parsedRows.some((row) =>
-      Boolean(row.published_at || row.closing_at)
-      || /\\b(?:tender id|bid number|bid no|tender reference number)\\b/i.test(row.raw_excerpt),
-    );
-    if (challenge || (!publicTenderRows && !explicitEmpty)) {
+    const publicTenderRows = hasPublicTenderRows(source, fetched.markdown);
+    if (challenge || !publicTenderRows) {
       return {
         url,
         result: { ok: false as const, error: challenge ?? "Direct HTML loaded but no public tender rows could be parsed." },
@@ -985,6 +980,21 @@ async function searchOfficialTenderIndex(
   return grouped.length ? grouped : [{ source: searchSource, matches: [] }];
 }
 
+function hasExplicitEmptyTenderResult(markdown: string): boolean {
+  return /no (?:active )?(?:tenders|bids|records|results) found|no records available|no data available|no active tenders available/i.test(markdown);
+}
+
+function hasPublicTenderRows(source: TenderSource, markdown: string): boolean {
+  if (hasExplicitEmptyTenderResult(markdown)) return true;
+  const parsed = parseListing(source, markdown);
+  if (parsed.some((row) => Boolean(row.published_at || row.closing_at))) return true;
+  if (/\\bGEM\\/\\d{4}\\/B\\/\\d+\\b/i.test(markdown)
+    || /\\b\\d{4}_[A-Z0-9]+_\\d+_\\d+\\b/i.test(markdown)) return true;
+  const links = [...markdown.matchAll(/\\[([^\\]]+)\\]\\((https?:\\/\\/[^)]+)\\)/g)];
+  const tenderLinks = links.filter((match) => /tender|bid|notice|supply|procure|purchase/i.test(match[1]));
+  return /tender title|bid number|tender reference number/i.test(markdown) && tenderLinks.length > 0;
+}
+
 function isPortalChallengePage(markdown: string): string | null {
   const lower = markdown.toLowerCase();
   if (lower.includes("provide captcha and click on search button to list all active tenders")
@@ -1017,6 +1027,13 @@ export async function scrapeAllSources(
     const challenge = isPortalChallengePage(scraped.markdown);
     if (challenge) {
       return { source, matches: [] as ParsedTender[], error: challenge };
+    }
+    if (!hasPublicTenderRows(source, scraped.markdown)) {
+      return {
+        source,
+        matches: [] as ParsedTender[],
+        error: "Page was reachable but contained no extractable public tender rows; zero matches cannot be verified.",
+      };
     }
     return { source, matches: parseListing(source, scraped.markdown, opts) };
   });
