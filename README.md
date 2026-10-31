@@ -58,3 +58,5 @@ The active scanner now isolates Firecrawl 429 handling per source and limits sca
 <!-- lovable-sync checkpoint: tender discovery recall improvements, bounded parallel BOQ audits, request timeouts and CSV export are on main; latest source commit e60fd9d083a44b14017f39ddd1ae52339ce5d692 -->
 
 <!-- lovable-sync checkpoint: final settings-panel compatibility fix is on main; application source commit e3e9acfbd3074e70a87a4e3b9c3a520d2cbade1e -->
+
+<!-- tender-finder-sync: latest discovery reliability fixes are on main; source commit bce6480c1b19770ca6f6ec4baaef36aebf721282 -->
