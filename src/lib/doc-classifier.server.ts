@@ -27,6 +27,7 @@ export interface DeepResult {
   category?: string;
   excerpt?: string;
   docs_checked: number;
+  closing_at?: string;
 }
 
 interface FirecrawlOk {
@@ -231,6 +232,24 @@ async function geminiDeepClassify(
   };
 }
 
+function extractTenderClosingDate(markdown: string): string | undefined {
+  const labels = [
+    "Bid End Date/Time",
+    "Bid End Date",
+    "Bid Submission End Date",
+    "Bid Submission Closing Date",
+    "Closing Date",
+  ];
+  const lower = markdown.toLowerCase();
+  for (const label of labels) {
+    const index = lower.indexOf(label.toLowerCase());
+    if (index < 0) continue;
+    const match = markdown.slice(index, index + 220).match(/(\\d{1,2}[-/]\\d{1,2}[-/]\\d{4})(?:\\s+(\\d{1,2}:\\d{2}(?::\\d{2})?\\s*(?:AM|PM)?))?/i);
+    if (match) return match[1] + (match[2] ? " " + match[2].trim() : "");
+  }
+  return undefined;
+}
+
 export async function deepClassifyTender(input: DeepInput): Promise<DeepResult> {
   // 1. Scrape the tender detail page.
   const page = await firecrawl(input.tender_url);
@@ -259,7 +278,7 @@ export async function deepClassifyTender(input: DeepInput): Promise<DeepResult> 
   }
 
   // 4. Classify (with whatever docs we got, or just the page text if none).
-  return geminiDeepClassify(
+  const classification = await geminiDeepClassify(
     {
       title: input.title,
       org: input.organisation,
@@ -268,6 +287,10 @@ export async function deepClassifyTender(input: DeepInput): Promise<DeepResult> 
     },
     docs,
   );
+  return {
+    ...classification,
+    closing_at: extractTenderClosingDate(page.markdown),
+  };
 }
 
 export interface DeepDebugResult {
