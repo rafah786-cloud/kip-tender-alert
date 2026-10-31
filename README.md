@@ -52,3 +52,5 @@ The active scanner now isolates Firecrawl 429 handling per source and limits sca
 
 
 <!-- Lovable sync checkpoint: Firecrawl retry/backoff and truthful provider diagnostics -->
+
+<!-- Retry-After compliance checkpoint: cf4cf0a6ee560064ccc550fc2a3389b04f9c4636 -->
