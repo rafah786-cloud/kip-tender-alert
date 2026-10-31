@@ -37,6 +37,15 @@ describe("Independent tender search sets", () => {
     expect(sets[0]?.include_keywords).toEqual(["mattress", "coir mattress"]);
     expect(sets.find((set) => set.id === "construction-pwd")?.enabled).toBe(false);
   });
+  test("provides all sector starter sets while keeping Mattress as the only enabled set", () => {
+    const sets = normalizeKeywordSets(null, ["mattress", "coir mattress"], [], "any");
+    expect(sets).toHaveLength(21);
+    expect(sets.filter((set) => set.enabled).map((set) => set.id)).toEqual(["mattress"]);
+    expect(sets.find((set) => set.id === "construction-pwd")?.include_keywords.length).toBeGreaterThan(40);
+    expect(sets.find((set) => set.id === "medical-hospital-equipment")?.include_keywords).toContain("ventilator");
+    expect(sets.find((set) => set.id === "solar-renewable-energy")?.enabled).toBe(false);
+  });
+
   test("requires at least one enabled set with include terms", () => {
     expect(() => sanitizeKeywordSets([{ ...mattress, enabled: false }])).toThrow();
     expect(sanitizeKeywordSets([mattress, construction])).toHaveLength(2);
