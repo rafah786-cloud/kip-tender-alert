@@ -193,7 +193,9 @@ export async function diagnoseFirecrawlScraper(): Promise<{
   error?: string;
 }> {
   const keyConfigured = Boolean(getServerRuntimeEnv("FIRECRAWL_API_KEY"));
-  const cooldownMs = Math.max(0, firecrawlCooldownUntil - Date.now());
+  // The scanner no longer uses a cross-source cooldown; each 429 is isolated
+  // to the source that received it so subsequent portal requests still run.
+  const cooldownMs = 0;
   const result = await firecrawlScrape(
     "https://eprocure.gov.in/eprocure/app?page=FrontEndLatestActiveTenders&service=page",
   );
