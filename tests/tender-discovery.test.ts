@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   termHits,
+  htmlToTenderMarkdown,
   parseListing,
   hasPublicTenderRows,
   isPortalChallengePage,
@@ -43,6 +44,25 @@ describe("Tender Finder discovery regression tests", () => {
     ].join("\n");
     const spacedRows = parseListing(source, spacedMonth, { include: ["coir mattress"], exclude: [], mode: "any" });
     expect(spacedRows[0]?.closing_at).toBe("02 Nov 2099 06:00 PM");
+  });
+
+  test("converts real procurement HTML tables into parseable tender rows", () => {
+    const html = \`
+      <table id="activeTenders">
+        <tr class="list_header">
+          <td>Tender Title</td><td>Reference No</td><td>Closing Date</td><td>Bid Opening Date</td>
+        </tr>
+        <tr class="even">
+          <td><a href="https://procurement.example.gov.in/tender/789">Supply of 25 Foam Mattresses</a></td>
+          <td>REF-789</td><td>02-Nov-2099 06:00 PM</td><td>03-Nov-2099 10:00 AM</td>
+        </tr>
+      </table>\`;
+    const markdown = htmlToTenderMarkdown(html);
+    const rows = parseListing(source, markdown, { include: ["mattress"], exclude: [], mode: "any" });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.title).toContain("Supply of 25 Foam Mattresses");
+    expect(rows[0]?.closing_at).toBe("02-Nov-2099 06:00 PM");
+    expect(rows[0]?.tender_url).toBe("https://procurement.example.gov.in/tender/789");
   });
 
   test("distinguishes a public feed from a shell with no tender rows", () => {
