@@ -47,7 +47,7 @@ describe("Tender Finder discovery regression tests", () => {
   });
 
   test("converts real procurement HTML tables into parseable tender rows", () => {
-    const html = \`
+    const html = `
       <table id="activeTenders">
         <tr class="list_header">
           <td>Tender Title</td><td>Reference No</td><td>Closing Date</td><td>Bid Opening Date</td>
@@ -56,7 +56,7 @@ describe("Tender Finder discovery regression tests", () => {
           <td><a href="https://procurement.example.gov.in/tender/789">Supply of 25 Foam Mattresses</a></td>
           <td>REF-789</td><td>02-Nov-2099 06:00 PM</td><td>03-Nov-2099 10:00 AM</td>
         </tr>
-      </table>\`;
+      </table>`;
     const markdown = htmlToTenderMarkdown(html);
     const rows = parseListing(source, markdown, { include: ["mattress"], exclude: [], mode: "any" });
     expect(rows).toHaveLength(1);
