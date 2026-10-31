@@ -988,13 +988,15 @@ function hasPublicTenderRows(source: TenderSource, markdown: string): boolean {
   if (hasExplicitEmptyTenderResult(markdown)) return true;
   const parsed = parseListing(source, markdown);
   if (parsed.some((row) => Boolean(row.published_at || row.closing_at))) return true;
-  if (/\\bGEM\\/\\d{4}\\/B\\/\\d+\\b/i.test(markdown)
-    || /\\b\\d{4}_[A-Z0-9]+_\\d+_\\d+\\b/i.test(markdown)) return true;
-  const links = [...markdown.matchAll(/\\[([^\\]]+)\\]\\((https?:\\/\\/[^)]+)\\)/g)];
+  const hasTenderId =
+    new RegExp("\\bGEM/\\d{4}/B/\\d+\\b", "i").test(markdown)
+    || new RegExp("\\b\\d{4}_[A-Z0-9]+_\\d+_\\d+\\b", "i").test(markdown);
+  if (hasTenderId) return true;
+  const linkPattern = new RegExp("\\[([^\\]]+)\\]\\((https?://[^)]+)\\)", "g");
+  const links = [...markdown.matchAll(linkPattern)];
   const tenderLinks = links.filter((match) => /tender|bid|notice|supply|procure|purchase/i.test(match[1]));
   return /tender title|bid number|tender reference number/i.test(markdown) && tenderLinks.length > 0;
 }
-
 function isPortalChallengePage(markdown: string): string | null {
   const lower = markdown.toLowerCase();
   if (lower.includes("provide captcha and click on search button to list all active tenders")
