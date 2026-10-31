@@ -81,6 +81,36 @@ export function isServerRuntimeEnvConfigured(name: RuntimeSecretName): boolean {
   return Boolean(getServerRuntimeEnv(name));
 }
 
+export function getServerRuntimeEnvDiagnostics(name: RuntimeSecretName): {
+  configured: boolean;
+  processEnvConfigured: boolean;
+  workerBindingConfigured: boolean;
+  source: "process.env" | "worker-binding" | "missing";
+} {
+  let processEnvConfigured = false;
+  try {
+    const value = typeof process !== "undefined" ? process.env?.[name] : undefined;
+    processEnvConfigured = typeof value === "string" && value.trim().length > 0;
+  } catch {
+    // process.env may be unavailable in the Worker runtime.
+  }
+
+  const bindingValue = runtimeBindings[name];
+  const workerBindingConfigured =
+    typeof bindingValue === "string" && bindingValue.trim().length > 0;
+
+  return {
+    configured: processEnvConfigured || workerBindingConfigured,
+    processEnvConfigured,
+    workerBindingConfigured,
+    source: processEnvConfigured
+      ? "process.env"
+      : workerBindingConfigured
+        ? "worker-binding"
+        : "missing",
+  };
+}
+
 /**
  * Create a service-role client that supports both legacy JWT keys and the
  * newer opaque sb_secret_* keys. Opaque keys belong in apikey, not Bearer auth.
