@@ -236,7 +236,7 @@ async function geminiDeepClassify(
   };
 }
 
-function extractTenderClosingDate(markdown: string): string | undefined {
+export function extractTenderClosingDate(markdown: string): string | undefined {
   const labels = [
     "Bid End Date/Time",
     "Bid End Date",
