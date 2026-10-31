@@ -13,7 +13,9 @@ export interface TenderSource {
 type PortalMenu = { key: string; label: string; path: string };
 
 const NIC_MENUS: PortalMenu[] = [
-  { key: "latest_active", label: "Latest Active Tenders", path: "FrontEndLatestActiveTenders" },
+  // The NIC active-tender page is CAPTCHA-gated on many installations.
+  // Use the publicly rendered homepage tender feed for this source.
+  { key: "latest_active", label: "Latest Public Tender Feed", path: "" },
   { key: "by_location", label: "Tenders by Location", path: "FrontEndTendersByLocation" },
   { key: "by_organisation", label: "Tenders by Organisation", path: "FrontEndTendersByOrganisation" },
   { key: "by_classification", label: "Tenders by Classification", path: "FrontEndTendersByClassification" },
@@ -29,7 +31,7 @@ function buildPortal(
   return NIC_MENUS.map((m) => ({
     key: `${keyPrefix}__${m.key}`,
     label: `${labelPrefix} — ${m.label}`,
-    url: `${base}?page=${m.path}&service=page`,
+    url: m.path ? `${base}?page=${m.path}&service=page` : `${base}?service=restart`,
   }));
 }
 
@@ -72,27 +74,27 @@ const OTHER_GOVERNMENT_PORTALS: TenderSource[] = [
   { key: "gem", label: "Government e-Marketplace (GeM) — All Bids", url: "https://bidplus.gem.gov.in/all-bids" },
   { key: "gem_global", label: "GeM — Global Tender Bids", url: "https://bidplus-global.gem.gov.in/" },
   { key: "bihar", label: "Bihar Government Tenders", url: "https://www.bihartenders.com/" },
-  { key: "gujarat_nprocure", label: "Gujarat NProcure", url: "https://jmc.nprocure.com/asp/home/new_home_tenders.asp" },
-  { key: "karnataka", label: "Karnataka eProcurement", url: "https://eproc.karnataka.gov.in/" },
+  { key: "gujarat_nprocure", label: "Gujarat NProcure", url: "https://tender.nprocure.com/" },
+  { key: "karnataka", label: "Karnataka Public Procurement Portal", url: "https://kppp.karnataka.gov.in/" },
   { key: "gujarat_tenders", label: "Gujarat Tenders", url: "https://www.gujarattenders.in/" },
   { key: "goa_tenderwizard", label: "Goa TenderWizard", url: "https://www.tenderwizard.com/ROOTAPP/GOA.jsp?company=GOA" },
-  { key: "defence", label: "Defence eProcurement", url: "https://defproc.gov.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page" },
+  { key: "defence", label: "Defence eProcurement", url: "https://defproc.gov.in/nicgep/app?service=restart" },
   { key: "bhel", label: "BHEL eProcurement", url: "https://eprocurebhel.co.in/" },
   { key: "bel", label: "BEL eProcurement", url: "https://eprocurebel.co.in/" },
-  { key: "coal_india", label: "Coal India eTenders", url: "https://coalindiatenders.nic.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page" },
-  { key: "cpcl", label: "Chennai Petroleum (CPCL) eTenders", url: "https://cpcletenders.nic.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page" },
+  { key: "coal_india", label: "Coal India eTenders", url: "https://coalindiatenders.nic.in/nicgep/app?service=restart" },
+  { key: "cpcl", label: "Chennai Petroleum (CPCL) eTenders", url: "https://cpcletenders.nic.in/nicgep/app?service=restart" },
   { key: "grse", label: "Garden Reach Shipbuilders (GRSE) eProcurement", url: "https://eprocuregrse.co.in/" },
-  { key: "goa_shipyard", label: "Goa Shipyard eTenders", url: "https://eprocuregsl.nic.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page" },
-  { key: "hindustan_shipyard", label: "Hindustan Shipyard eTenders", url: "https://eprocurehsl.nic.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page" },
-  { key: "indianoil", label: "IndianOil eTenders", url: "https://iocletenders.nic.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page" },
-  { key: "mazagon_dock", label: "Mazagon Dock eTenders", url: "https://eprocuremdl.nic.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page" },
-  { key: "midhani", label: "MIDHANI eTenders", url: "https://eprocuremidhani.nic.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page" },
-  { key: "ntpc", label: "NTPC eTenders", url: "https://eprocurentpc.nic.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page" },
-  { key: "beml", label: "BEML eProcurement", url: "https://eprocurebeml.nic.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page" },
-  { key: "pmgsy", label: "PMGSY eProcurement", url: "https://www.pmgsytenders.gov.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page" },
-  { key: "andhra_pradesh", label: "Andhra Pradesh eProcurement", url: "https://apeprocurement.gov.in/" },
-  { key: "telangana", label: "Telangana State eProcurement", url: "https://tender.telangana.gov.in/login.html" },
-  { key: "chhattisgarh", label: "Chhattisgarh eProcurement", url: "https://cgeprocurement.gov.in/" },
+  { key: "goa_shipyard", label: "Goa Shipyard eTenders", url: "https://eprocuregsl.nic.in/nicgep/app?service=restart" },
+  { key: "hindustan_shipyard", label: "Hindustan Shipyard eTenders", url: "https://eprocurehsl.nic.in/nicgep/app?service=restart" },
+  { key: "indianoil", label: "IndianOil eTenders", url: "https://iocletenders.nic.in/nicgep/app?service=restart" },
+  { key: "mazagon_dock", label: "Mazagon Dock eTenders", url: "https://eprocuremdl.nic.in/nicgep/app?service=restart" },
+  { key: "midhani", label: "MIDHANI eTenders", url: "https://eprocuremidhani.nic.in/nicgep/app?service=restart" },
+  { key: "ntpc", label: "NTPC eTenders", url: "https://eprocurentpc.nic.in/nicgep/app?service=restart" },
+  { key: "beml", label: "BEML eProcurement", url: "https://eprocurebeml.nic.in/nicgep/app?service=restart" },
+  { key: "pmgsy", label: "PMGSY eProcurement", url: "https://www.pmgsytenders.gov.in/nicgep/app?service=restart" },
+  { key: "andhra_pradesh", label: "Andhra Pradesh eProcurement", url: "https://tender.apeprocurement.gov.in/" },
+  { key: "telangana", label: "Telangana State eProcurement", url: "https://tender.telangana.gov.in/" },
+  { key: "chhattisgarh", label: "Chhattisgarh eProcurement", url: "http://eproc.cgstate.gov.in/" },
 ];
 
 export const TENDER_SOURCES: TenderSource[] = [
@@ -117,7 +119,7 @@ export const TENDER_SOURCES: TenderSource[] = [
   ...NIC_STATE_PORTALS.map((portal) => ({
     key: `${portal.key}__latest_active`,
     label: `${portal.label} — Latest Active Tenders`,
-    url: `${portal.base}?page=FrontEndLatestActiveTenders&service=page`,
+    url: `${portal.base}?service=restart`,
   })),
   ...OTHER_GOVERNMENT_PORTALS,
 ];
@@ -368,16 +370,39 @@ function escapeRe(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function termHits(text: string, term: string, mode: MatchMode): boolean {
-  const t = term.trim().toLowerCase();
-  if (!t) return false;
-  if (mode === "phrase") {
-    // exact substring (case-insensitive); multi-word allowed
-    return text.includes(t);
+function termForms(term: string): string[] {
+  const cleaned = term.trim().toLowerCase().replace(/[\\u2010-\\u2015]/g, "-").replace(/\\s+/g, " ");
+  if (!cleaned) return [];
+  const forms = new Set([cleaned, cleaned.replace(/-/g, " ")]);
+  const parts = cleaned.split(" ");
+  const last = parts[parts.length - 1];
+  const stem = parts.slice(0, -1).join(" ");
+  if (last) {
+    if (last.endsWith("ies") && last.length > 4) {
+      forms.add([stem, last.slice(0, -3) + "y"].filter(Boolean).join(" "));
+    } else if (/(sses|shes|ches|xes)$/.test(last)) {
+      forms.add([stem, last.slice(0, -2)].filter(Boolean).join(" "));
+    } else if (last.endsWith("s") && !last.endsWith("ss")) {
+      forms.add([stem, last.slice(0, -1)].filter(Boolean).join(" "));
+    } else if (/(ss|ch|sh|x|z)$/.test(last)) {
+      forms.add([stem, last + "es"].filter(Boolean).join(" "));
+    } else if (last.endsWith("y") && last.length > 1) {
+      forms.add([stem, last.slice(0, -1) + "ies"].filter(Boolean).join(" "));
+    } else {
+      forms.add(cleaned + "s");
+    }
   }
-  // word-boundary-ish for 'any' and 'all'
-  const re = new RegExp(`(^|[^a-z0-9])${escapeRe(t)}([^a-z0-9]|$)`, "i");
-  return re.test(text);
+  return [...forms].filter(Boolean);
+}
+
+function termHits(text: string, term: string, mode: MatchMode): boolean {
+  const variants = termForms(term);
+  if (variants.length === 0) return false;
+  if (mode === "phrase") return variants.some((variant) => text.includes(variant));
+  return variants.some((variant) => {
+    const pattern = escapeRe(variant).replace(/\\ /g, "[\\s_-]+");
+    return new RegExp("(^|[^a-z0-9])" + pattern + "([^a-z0-9]|$)", "i").test(text);
+  });
 }
 
 function findKeywordMatches(text: string, opts: MatchOptions): string[] {
