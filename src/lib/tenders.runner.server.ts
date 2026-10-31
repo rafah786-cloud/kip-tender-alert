@@ -64,12 +64,22 @@ export async function runTenderCheck(): Promise<RunResult> {
     match_mode?: string | null;
   };
   const defaultKeywords = [
-    "mattress", "mattresses", "foam mattress", "spring mattress", "coir mattress",
-    "rubberised coir", "rubberized coir", "hospital mattress", "medical mattress",
-    "orthopaedic mattress", "orthopedic mattress", "latex mattress", "folding mattress",
-    "mattress cover", "mattress protector", "pillow", "pillows", "bedding", "bed linen",
-    "bedsheet", "bed sheet", "bedroll", "bed roll", "sleeping mat", "sleeping mattress",
-    "cot mattress", "patient mattress", "pressure relief mattress",
+    "mattress", "mattresses", "mattress supply", "mattress set", "foam mattress",
+    "PU foam mattress", "polyurethane foam mattress", "memory foam mattress",
+    "rebonded foam mattress", "latex mattress", "coir mattress", "rubberised coir",
+    "rubberized coir", "spring mattress", "bonnell spring mattress", "pocket spring mattress",
+    "hospital mattress", "medical mattress", "patient mattress", "orthopaedic mattress",
+    "orthopedic mattress", "ICU mattress", "pressure relief mattress", "pressure-relief mattress",
+    "anti-decubitus mattress", "air mattress", "water mattress", "folding mattress",
+    "portable mattress", "camping mattress", "hostel mattress", "cot mattress",
+    "mattress cover", "mattress protector", "mattress topper", "mattress pad",
+    "bed", "beds", "hospital bed", "patient bed", "ward bed", "ICU bed",
+    "bunk bed", "cot", "cots", "bed frame", "bed base", "bedstead", "bed roll",
+    "bedroll", "sleeping mattress", "sleeping mat", "sleeping pad", "sleeping bag",
+    "pillow", "pillows", "pillow cover", "pillow case", "pillowcase", "bolster",
+    "bedding", "bed linen", "bedsheet", "bed sheet", "blanket", "blankets",
+    "comforter", "quilt", "duvet", "bedspread", "hospital linen", "linen",
+    "foam sheet", "PU foam", "coir mattress", "rubberised coir mattress",
   ];
   const keywords = Array.isArray(settingsRow.keywords) && settingsRow.keywords.length
     ? settingsRow.keywords.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
