@@ -93,8 +93,11 @@ export async function runTenderCheck(): Promise<RunResult> {
   const excludeKeywords = Array.isArray(settingsRow.exclude_keywords)
     ? settingsRow.exclude_keywords.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
     : [];
+  // Discovery is deliberately recall-first: the built-in vocabulary and
+  // custom terms are OR-matched so an old "all words" preference cannot
+  // accidentally require dozens of unrelated terms to appear in one row.
   const rawMode = settingsRow.match_mode ?? "any";
-  const matchMode = rawMode === "all" || rawMode === "phrase" ? rawMode : "any";
+  const matchMode = rawMode === "phrase" ? "phrase" : "any";
   const { results } = await scrapeAllSources({
     include: keywords,
     exclude: excludeKeywords,
@@ -232,10 +235,10 @@ export async function runTenderCheck(): Promise<RunResult> {
       reason: "stage-1 skipped",
     },
   }));
-  // Stage 1 is used to prioritise likely mattress/bedding opportunities. Do not
-  // send obvious "no" results into costly document/PDF analysis. If stage-1 is
-  // unavailable, missing classifications safely remain "maybe".
-  const eligibleCandidates = candidates.filter((c) => c.stage1.verdict !== "no");
+  // Stage 1 is a ranking hint, never a hard exclusion. A title-only model
+  // can miss a relevant BOQ line item, so even "no" candidates remain in the
+  // rotating queue at lower priority for eventual document-level verification.
+  const eligibleCandidates = candidates;
   const candidateQueues = new Map<string, DeepRow[]>();
   for (const candidate of eligibleCandidates) {
     const queue = candidateQueues.get(candidate.source_key) ?? [];
@@ -277,35 +280,44 @@ export async function runTenderCheck(): Promise<RunResult> {
     if (!added) break;
   }
 
-  for (const c of toDeep) {
+  // Run two detail/BOQ audits concurrently. This reduces serial waiting while
+  // keeping provider load and per-request memory bounded.
+  const docErrors: string[] = [];
+  for (let offset = 0; offset < toDeep.length; offset += 2) {
     if (await scanStopRequested(sb)) return finishStoppedScan(sb);
-    if (!c.tender_url) {
-      // No detail URL — keep stage-1 verdict but mark as not doc-verified.
-      c.deep = {
-        verdict: c.stage1.verdict,
-        confidence: c.stage1.confidence,
-        reason: `No detail URL; stage-1 only: ${c.stage1.reason}`,
-        docs_checked: 0,
-      };
-      continue;
-    }
-    try {
-      c.deep = await deepClassifyTender({
-        title: c.title,
-        organisation: c.organisation ?? null,
-        source_label: c.source_label,
-        tender_url: c.tender_url,
-      });
-    } catch (e) {
-      docCheckErr = e instanceof Error ? e.message : String(e);
-      c.deep = {
-        verdict: "maybe",
-        confidence: 0,
-        reason: `Deep check failed: ${docCheckErr}`,
-        docs_checked: 0,
-      };
-    }
+    const batch = toDeep.slice(offset, offset + 2);
+    await Promise.all(batch.map(async (c) => {
+      if (await scanStopRequested(sb)) return;
+      if (!c.tender_url) {
+        c.deep = {
+          verdict: c.stage1.verdict,
+          confidence: c.stage1.confidence,
+          reason: `No detail URL; stage-1 only: ${c.stage1.reason}`,
+          docs_checked: 0,
+        };
+        return;
+      }
+      try {
+        c.deep = await deepClassifyTender({
+          title: c.title,
+          organisation: c.organisation ?? null,
+          source_label: c.source_label,
+          tender_url: c.tender_url,
+        });
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : String(e);
+        docErrors.push(reason);
+        c.deep = {
+          verdict: "maybe",
+          confidence: 0,
+          reason: `Deep check failed: ${reason.slice(0, 240)}`,
+          docs_checked: 0,
+        };
+      }
+    }));
+    if (await scanStopRequested(sb)) return finishStoppedScan(sb);
   }
+  docCheckErr = [...new Set(docErrors)].slice(0, 3).join("; ").slice(0, 900);
 
   if (await scanStopRequested(sb)) return finishStoppedScan(sb);
 
