@@ -93,7 +93,7 @@ type TenderExportRow = {
 function csvCell(value: unknown): string {
   const raw = String(value ?? "");
   // Prefix spreadsheet formula-like values to prevent CSV formula injection.
-  const safe = /^[\\s\\u0000-\\u001f]*[=+\\-@]/.test(raw) ? `'${raw}` : raw;
+  const safe = /^[\s\u0000-\u001f]*[=+\-@]/.test(raw) ? `'${raw}` : raw;
   return `"${safe.replace(/"/g, '""')}"`;
 }
 
@@ -120,8 +120,8 @@ function exportTenderRows(rows: TenderExportRow[]): void {
   const csv = [
     columns.map(([label]) => csvCell(label)).join(","),
     ...rows.map((row) => columns.map(([, value]) => csvCell(value(row))).join(",")),
-  ].join("\\r\\n");
-  const blob = new Blob(["\\uFEFF", csv], { type: "text/csv;charset=utf-8" });
+  ].join("\r\n");
+  const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
   const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = objectUrl;
