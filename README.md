@@ -62,3 +62,5 @@ The active scanner now isolates Firecrawl 429 handling per source and limits sca
 <!-- tender-finder-sync: latest discovery reliability fixes are on main; source commit bce6480c1b19770ca6f6ec4baaef36aebf721282 -->
 
 <!-- tender-finder-release-checkpoint: source commit bc811dd3a327cb43bb90adee7ecd7a8a532d313a -->
+
+<!-- tender-finder-sync: keyword, tender-row and IST deadline regression tests; source commit 57dc473e98fb46a57b31b5049337e32d93c44bd3 -->
