@@ -99,7 +99,7 @@ function cleanList(arr: string[]): string[] {
 }
 
 export const updateMatchSettings = createServerFn({ method: "POST" })
-  .inputValidator(
+  .validator(
     (d: { keywords?: string[]; exclude_keywords?: string[]; match_mode?: MatchMode }) => d,
   )
   .handler(async ({ data }) => {
@@ -122,7 +122,7 @@ export const updateMatchSettings = createServerFn({ method: "POST" })
   });
 
 export const updateAiSettings = createServerFn({ method: "POST" })
-  .inputValidator((d: { ai_min_confidence?: number; ai_include_maybe?: boolean }) => d)
+  .validator((d: { ai_min_confidence?: number; ai_include_maybe?: boolean }) => d)
   .handler(async ({ data }) => {
     await requireAdminAccess();
     const sb = await getServerClient();
@@ -142,7 +142,7 @@ export const updateAiSettings = createServerFn({ method: "POST" })
 
 // Back-compat alias for existing call sites.
 export const updateKeywords = createServerFn({ method: "POST" })
-  .inputValidator((d: { keywords: string[] }) => d)
+  .validator((d: { keywords: string[] }) => d)
   .handler(async ({ data }) => {
     await requireAdminAccess();
     const sb = await getServerClient();
@@ -154,7 +154,7 @@ export const updateKeywords = createServerFn({ method: "POST" })
 
 
 export const updateNotifyEmail = createServerFn({ method: "POST" })
-  .inputValidator((d: { email: string | null }) => d)
+  .validator((d: { email: string | null }) => d)
   .handler(async ({ data }) => {
     await requireAdminAccess();
     const sb = await getServerClient();
@@ -188,7 +188,7 @@ export const listTenders = createServerFn({ method: "GET" }).handler(async () =>
 });
 
 export const markSeen = createServerFn({ method: "POST" })
-  .inputValidator((d: { id: string; seen: boolean }) => d)
+  .validator((d: { id: string; seen: boolean }) => d)
   .handler(async ({ data }) => {
     await requireAdminAccess();
     const sb = await getServerClient();
