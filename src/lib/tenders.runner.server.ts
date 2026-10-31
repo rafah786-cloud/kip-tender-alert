@@ -343,7 +343,10 @@ export async function runTenderCheck(): Promise<RunResult> {
     }));
     if (await scanStopRequested(sb)) return finishStoppedScan(sb);
   }
-  docCheckErr = [...new Set(docErrors)].slice(0, 3).join("; ").slice(0, 900);
+  const contentFailures = toDeep
+    .filter((row) => row.deep?.reason && /^(Detail page unreachable|Doc-AI unavailable)/i.test(row.deep.reason))
+    .map((row) => row.source_label + ": " + row.deep!.reason);
+  docCheckErr = [...new Set([...docErrors, ...contentFailures])].slice(0, 6).join("; ").slice(0, 1_200);
 
   if (await scanStopRequested(sb)) return finishStoppedScan(sb);
 
