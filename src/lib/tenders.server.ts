@@ -517,7 +517,7 @@ export function parseListing(
     let organisation: string | undefined;
 
     if (cells && cells.length >= 2) {
-      const dateRe = /\d{1,2}[-/](?:\d{1,2}|[A-Za-z]{3,9})[-/]\d{2,4}/;
+      const dateRe = /\b(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/\s]+(?:\d{1,2}|[A-Za-z]{3,9})[-/\s]+\d{2,4})\b/;
       const dates = cells.filter((c) => dateRe.test(c));
       if (closingHeaderIndex >= 0 && dateRe.test(cells[closingHeaderIndex] ?? "")) {
         closing_at = cells[closingHeaderIndex];
