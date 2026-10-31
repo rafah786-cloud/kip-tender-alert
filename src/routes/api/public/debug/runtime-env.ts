@@ -45,6 +45,23 @@ export const Route = createFileRoute("/api/public/debug/runtime-env")({
 
         // Never return secret values, prefixes, lengths, or hashes.
         const firecrawl = getServerRuntimeEnvDiagnostics("FIRECRAWL_API_KEY");
+        let scannerProbe: {
+          attempted: boolean;
+          keyConfigured?: boolean;
+          cooldownActiveAtStart?: boolean;
+          cooldownSecondsAtStart?: number;
+          ok?: boolean;
+          markdownChars?: number;
+          error?: string;
+        } = { attempted: false };
+
+        if (new URL(request.url).searchParams.get("probe") === "scanner") {
+          const { diagnoseFirecrawlScraper } = await import("@/lib/tenders.server");
+          scannerProbe = {
+            attempted: true,
+            ...(await diagnoseFirecrawlScraper()),
+          };
+        }
         let providerProbe: {
           attempted: boolean;
           httpStatus?: number;
@@ -132,6 +149,7 @@ export const Route = createFileRoute("/api/public/debug/runtime-env")({
           },
           firecrawlProbe: providerProbe,
           firecrawlCreditUsage: creditUsage,
+          scannerProbe,
           serverSupabaseConfigured:
             Boolean(getServerRuntimeEnv("SUPABASE_URL")) &&
             Boolean(getServerRuntimeEnv("SUPABASE_SERVICE_ROLE_KEY")),
