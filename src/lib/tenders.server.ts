@@ -136,7 +136,7 @@ interface ScrapeErr {
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
 async function directFetchFallback(url: string): Promise<ScrapeOk | ScrapeErr> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 12_000);
+  const timeoutId = setTimeout(() => controller.abort(), 8_000);
 
   try {
     const res = await fetch(url, {
@@ -617,12 +617,10 @@ async function scrapeSourcesWithBatch(
   shouldStop?: () => Promise<boolean>,
 ): Promise<Map<string, ScrapeOk | ScrapeErr>> {
   const key = getServerRuntimeEnv("FIRECRAWL_API_KEY");
-  const uniqueUrls = [...new Set(sources.map((source) => canonicalScrapeUrl(source.url)))];
-
   // Prefer a bounded, no-credit HTML fetch. Firecrawl is the recovery path for
   // portals that block direct requests, require browser rendering, or expose
   // a page shell without a parseable tender listing.
-  const directItems = await mapWithConcurrency(sources, 10, async (source) => {
+  const directItems = await mapWithConcurrency(sources, 12, async (source) => {
     if (shouldStop && await shouldStop()) {
       return { url: canonicalScrapeUrl(source.url), result: { ok: false as const, error: "Scan stopped by administrator." }, needsBrowser: false };
     }
