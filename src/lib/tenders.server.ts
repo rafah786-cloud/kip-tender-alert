@@ -156,6 +156,7 @@ async function directFetchFallback(url: string): Promise<ScrapeOk | ScrapeErr> {
       .replace(/<!--[\s\S]*?-->/g, " ")
       .replace(/<(script|style|noscript)[^>]*>[\s\S]*?<\/\1>/gi, " ")
       .replace(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gis, " [$2]($1) ")
+      .replace(/<tr\b[^>]*>/gi, "\n| ")
       .replace(/<\/(td|th)>/gi, " | ")
       .replace(/<\/(tr|p)>|<br\s*\/?>/gi, "\n")
       .replace(/<[^>]+>/g, "")
