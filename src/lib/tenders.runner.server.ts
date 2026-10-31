@@ -22,6 +22,18 @@ export interface RunResult {
   message: string;
 }
 
+function isTenderDeadlinePassed(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const match = value.match(/(\\d{1,2})[-/](\\d{1,2})[-/](\\d{4})(?:\\s+(\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?/);
+  if (!match) return false;
+  const [, day, month, year, hour = "23", minute = "59", second = "59"] = match;
+  const deadline = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+  if (Number.isNaN(deadline.getTime())) return false;
+  return deadline.getTime() < Date.now();
+}
+
+
+
 async function scanStopRequested(sb: ReturnType<typeof getServerClient>): Promise<boolean> {
   const { data } = await sb.from("settings").select("last_run_status").eq("id", 1).single();
   return data?.last_run_status === "stopping" || data?.last_run_status === "stopped";
@@ -78,8 +90,19 @@ export async function runTenderCheck(): Promise<RunResult> {
     "bedroll", "sleeping mattress", "sleeping mat", "sleeping pad", "sleeping bag",
     "pillow", "pillows", "pillow cover", "pillow case", "pillowcase", "bolster",
     "bedding", "bed linen", "bedsheet", "bed sheet", "blanket", "blankets",
-    "comforter", "quilt", "duvet", "bedspread", "hospital linen", "linen",
+    "comforter", "quilt", "quilts", "duvet", "bedspread", "hospital linen", "linen",
     "foam sheet", "PU foam", "coir mattress", "rubberised coir mattress",
+    "bed sheets", "bed sheet supply", "bedsheet sets", "bed linen supply",
+    "bed linen sets", "bedclothes", "bed cover", "bed covers", "pillow covers",
+    "pillowcase sets", "cushion", "cushions", "mattress foam", "rubber foam",
+    "HR foam", "high resilience foam", "air mattress for medical use",
+    "medical air mattress", "anti bedsore mattress", "alternating pressure mattress",
+    "pressure mattress", "patient transfer mattress", "surgical mattress",
+    "ICU bed with mattress", "hospital bed with mattress", "medical bed with mattress",
+    "cotton mattress", "cotton bed", "cotton bedsheet", "cotton bed sheet",
+    "linen items", "linen supplies", "hospital bedding", "hostel bedding",
+    "dormitory supplies", "sleeping equipment", "ward furniture",
+    "bedside locker", "bedside cabinet",
   ];
   // Always retain the built-in mattress/bedding vocabulary and add the
   // administrator's custom terms. This makes expanded discovery effective
@@ -184,7 +207,9 @@ export async function runTenderCheck(): Promise<RunResult> {
       existingFingerprints.add((row as { fingerprint: string }).fingerprint);
     }
   }
-  const freshRows = allRows.filter((row) => !existingFingerprints.has(row.fingerprint));
+  const expiredCount = allRows.filter((row) => isTenderDeadlinePassed(row.closing_at)).length;
+  const actionableRows = allRows.filter((row) => !isTenderDeadlinePassed(row.closing_at));
+  const freshRows = actionableRows.filter((row) => !existingFingerprints.has(row.fingerprint));
 
   // AI classification is only run on newly discovered candidates.
   let verdicts: Awaited<ReturnType<typeof classifyTenders>> = [];
@@ -420,10 +445,15 @@ export async function runTenderCheck(): Promise<RunResult> {
   }
 
   const errored = summary.filter((s) => s.error).map((s) => `${s.key}: ${s.error}`);
+  const processingErrors = Boolean(aiError || docCheckErr);
   const status =
-    errored.length === results.length ? "error" : errored.length > 0 ? "partial" : "ok";
+    errored.length === results.length && results.length > 0
+      ? "error"
+      : errored.length > 0 || processingErrors
+        ? "partial"
+        : "ok";
   const message =
-    `Scanned ${results.length} source pages; ${allRows.length} keyword matches (${freshRows.length} not previously saved) → deep-audited BOQ/contract docs for ${toDeep.length} → ${totalKept} kept at ≥${Math.round(minConfidence * 100)}% confidence${includeMaybe ? " (incl. maybe)" : " (yes only)"} (${inserted} new).` +
+    `Scanned ${results.length} source pages; ${allRows.length} keyword matches (${expiredCount} expired excluded; ${freshRows.length} actionable and not previously saved) → deep-audited BOQ/contract docs for ${toDeep.length} → ${totalKept} kept at ≥${Math.round(minConfidence * 100)}% confidence${includeMaybe ? " (incl. maybe)" : " (yes only)"} (${inserted} new).` +
     (aiError ? ` Stage-1 error: ${aiError}.` : "") +
     (docCheckErr ? ` Doc-check error: ${docCheckErr}.` : "") +
     emailNote +
