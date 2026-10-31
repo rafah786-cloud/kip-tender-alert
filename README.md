@@ -49,3 +49,6 @@ Pushing a commit to the active synced branch (currently `main`) updates the Lova
 
 <!-- lovable-sync-notice: 2026-10-31 scanner cooldown fix -->
 The active scanner now isolates Firecrawl 429 handling per source and limits scan concurrency to two. The existing Lovable project must sync this branch before the change is published.
+
+
+<!-- Lovable sync checkpoint: Firecrawl retry/backoff and truthful provider diagnostics -->
