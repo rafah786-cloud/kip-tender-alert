@@ -268,8 +268,20 @@ async function firecrawlScrape(url: string, shouldStop?: () => Promise<boolean>)
             ? Number(retryAfter)
             : Math.max(0, (Date.parse(retryAfter) - Date.now()) / 1000))
         : 0;
-      const backoffMs = Math.min(30_000, Math.max(retryAfterSeconds * 1000, 2_000 * (2 ** attempt)));
-      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      // Retry-After is authoritative: never shorten the provider's requested wait.
+      const backoffMs = retryAfterSeconds > 0
+        ? retryAfterSeconds * 1000
+        : 2_000 * (2 ** attempt);
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, backoffMs);
+        controller.signal.addEventListener("abort", () => {
+          clearTimeout(timer);
+          resolve(undefined);
+        }, { once: true });
+      });
+      if (controller.signal.aborted) {
+        return { ok: false, error: "Scan stopped by administrator." };
+      }
     }
 
     if (stopPoll) clearInterval(stopPoll);
