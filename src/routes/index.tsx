@@ -318,6 +318,10 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
     /FIRECRAWL_API_KEY|Firecrawl authentication failed|Firecrawl credits\/quota exhausted/i.test(
       settingsQ.data?.last_run_message ?? "",
     ) || sourceHealth.some((source) => /FIRECRAWL_API_KEY|Firecrawl authentication failed|Firecrawl credits\/quota exhausted/i.test(source.last_error ?? ""));
+  const firecrawlRateLimitIssue =
+    /Firecrawl rate limit persisted|Firecrawl rate limit reached/i.test(
+      settingsQ.data?.last_run_message ?? "",
+    ) || sourceHealth.some((source) => /Firecrawl rate limit persisted|Firecrawl rate limit reached/i.test(source.last_error ?? ""));
 
   const tendersQ = useQuery({
     queryKey: ["tenders"],
@@ -623,6 +627,13 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
               <p className="mt-1 text-xs text-rose-800/80">{tendersQ.error instanceof Error ? tendersQ.error.message : settingsQ.error instanceof Error ? settingsQ.error.message : "Check your connection and retry."}</p>
             </div>
             <Button size="sm" variant="outline" className="shrink-0 border-rose-300 bg-white text-rose-900 hover:bg-rose-100" onClick={() => { void qc.invalidateQueries({ queryKey: ["settings"] }); void qc.invalidateQueries({ queryKey: ["tenders"] }); }}>Retry loading</Button>
+          </div>
+        )}
+
+        {firecrawlRateLimitIssue && !firecrawlConfigIssue && (
+          <div role="status" className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-950">
+            <p className="font-semibold">Firecrawl is temporarily rate-limiting some portal requests</p>
+            <p className="mt-1 leading-6">The scanner now serializes requests and retries throttled requests with bounded backoff. A persistent 429 is a provider rate-limit response, not a missing API key. Portal-specific errors remain listed separately below.</p>
           </div>
         )}
 
