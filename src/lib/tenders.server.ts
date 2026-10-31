@@ -400,7 +400,8 @@ function termHits(text: string, term: string, mode: MatchMode): boolean {
   if (variants.length === 0) return false;
   if (mode === "phrase") return variants.some((variant) => text.includes(variant));
   return variants.some((variant) => {
-    const re = new RegExp("(^|[^a-z0-9])" + escapeRe(variant) + "([^a-z0-9]|$)", "i");
+    const escaped = variant.split(" ").map(escapeRe).join("[\\\\s_-]+");
+    const re = new RegExp("(^|[^a-z0-9])" + escaped + "([^a-z0-9]|$)", "i");
     return re.test(text);
   });
 }
