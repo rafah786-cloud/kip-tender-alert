@@ -243,12 +243,20 @@ export async function runTenderCheck(): Promise<RunResult> {
         || b.stage1.confidence - a.stage1.confidence;
     });
   }
-  // Cap per run to keep cost/latency bounded (deep audit downloads PDFs). Round-
-  // robin across portals so a busy central source cannot consume the whole cap.
+  // Cap per run to keep cost/latency bounded (deep audit downloads PDFs).
+  // Rotate each portal's queue by the two-hour scheduler slot so candidates
+  // beyond the per-run cap are not starved forever by the same first 40 rows.
   const DEEP_CAP = 40;
+  const scanSlot = Math.floor(Date.now() / (2 * 60 * 60 * 1000));
   const queues = [...candidateQueues.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([, queue]) => queue);
+    .map(([, queue]) => {
+      if (queue.length > 1) {
+        const offset = (scanSlot * DEEP_CAP) % queue.length;
+        queue.push(...queue.splice(0, offset));
+      }
+      return queue;
+    });
   const toDeep: DeepRow[] = [];
   while (toDeep.length < DEEP_CAP) {
     let added = false;
