@@ -60,6 +60,7 @@ async function firecrawl(url: string): Promise<FirecrawlOk | FirecrawlErr> {
         onlyMainContent: true,
         waitFor: 2500,
       }),
+      signal: AbortSignal.timeout(45_000),
     });
     const json = (await res.json().catch(() => null)) as
       | { data?: { markdown?: string; links?: string[] }; markdown?: string; links?: string[] }
@@ -114,7 +115,10 @@ async function downloadDoc(
   url: string,
 ): Promise<{ ok: true; base64: string; mime: string; size: number } | { ok: false; error: string }> {
   try {
-    const res = await fetch(url, { redirect: "follow" });
+    const res = await fetch(url, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(25_000),
+    });
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
     const buf = await res.arrayBuffer();
     if (buf.byteLength > MAX_DOC_BYTES) return { ok: false, error: "too large" };
@@ -193,6 +197,7 @@ async function geminiDeepClassify(
       "X-Lovable-AIG-SDK": "raw-fetch",
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(60_000),
   });
 
   if (!res.ok) {
