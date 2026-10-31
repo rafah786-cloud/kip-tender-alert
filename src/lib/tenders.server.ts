@@ -633,7 +633,7 @@ async function scrapeSourcesWithBatch(
     const parsedRows = parseListing(source, fetched.markdown);
     const publicTenderRows = parsedRows.some((row) =>
       Boolean(row.published_at || row.closing_at)
-      || /(?:tender id|bid number|bid no\\.?|tender reference number)/i.test(row.raw_excerpt),
+      || /\\b(?:tender id|bid number|bid no|tender reference number)\\b/i.test(row.raw_excerpt),
     );
     if (challenge || (!publicTenderRows && !explicitEmpty)) {
       return {
@@ -648,6 +648,10 @@ async function scrapeSourcesWithBatch(
   const baseResults = new Map<string, ScrapeOk | ScrapeErr>();
   for (const item of directItems) baseResults.set(item.url, item.result);
   const pendingUrls = [...new Set(directItems.filter((item) => item.needsBrowser).map((item) => item.url))];
+  if (shouldStop && await shouldStop()) {
+    for (const url of pendingUrls) baseResults.set(url, { ok: false, error: "Scan stopped by administrator." });
+    return baseResults;
+  }
   if (pendingUrls.length === 0) return baseResults;
   if (!key) return baseResults;
 
@@ -724,7 +728,7 @@ async function scrapeSourcesWithBatch(
     }
     if (!response.ok) {
       const reason = "Firecrawl batch status failed (" + response.status + "): " + String(json.error ?? "").slice(0, 200);
-      return new Map(uniqueUrls.map((url) => [url, { ok: false as const, error: reason }]));
+      return new Map([...baseResults, ...pendingUrls.map((url) => [url, { ok: false as const, error: reason }] as const)]);
     }
 
     batch = json as FirecrawlBatchStatus;
