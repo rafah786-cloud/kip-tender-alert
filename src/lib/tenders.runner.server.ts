@@ -34,7 +34,7 @@ function isTenderDeadlinePassed(value: string | null | undefined): boolean {
     month = Number(iso[2]) - 1;
     day = Number(iso[3]);
   } else {
-    const human = value.match(/\b(\d{1,2})[-/]([A-Za-z]{3,9}|\d{1,2})[-/](\d{4})\b/);
+    const human = value.match(/\b(\d{1,2})[-/\s]+([A-Za-z]{3,9}|\d{1,2})[-/\s]+(\d{4})\b/i);
     if (!human) return false;
     day = Number(human[1]);
     year = Number(human[3]);
