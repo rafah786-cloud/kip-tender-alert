@@ -219,9 +219,9 @@ async function firecrawlScrape(url: string, shouldStop?: () => Promise<boolean>)
     return directFetchFallback(url);
   }
 
+  let stopPoll: ReturnType<typeof setInterval> | undefined;
   try {
     const controller = new AbortController();
-    let stopPoll: ReturnType<typeof setInterval> | undefined;
     if (shouldStop) {
       stopPoll = setInterval(() => {
         void shouldStop().then((stop) => { if (stop) controller.abort("Tender scan stopped by administrator"); }).catch(() => undefined);
