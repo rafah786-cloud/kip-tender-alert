@@ -172,7 +172,6 @@ async function directFetchFallback(url: string): Promise<ScrapeOk | ScrapeErr> {
     }
     return { ok: true, markdown };
   } catch (error) {
-    if (stopPoll) clearInterval(stopPoll);
     const reason = error instanceof Error ? error.message : String(error);
     return { ok: false, error: `Direct HTML fallback failed: ${reason.slice(0, 240)}` };
   } finally {
