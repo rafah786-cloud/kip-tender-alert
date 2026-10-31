@@ -96,8 +96,9 @@ export async function runTenderCheck(): Promise<RunResult> {
   // Discovery is deliberately recall-first: the built-in vocabulary and
   // custom terms are OR-matched so an old "all words" preference cannot
   // accidentally require dozens of unrelated terms to appear in one row.
-  const rawMode = settingsRow.match_mode ?? "any";
-  const matchMode = rawMode === "phrase" ? "phrase" : "any";
+  // Ignore legacy strict/phrase modes during ingestion. Candidate discovery
+  // must stay broad; the AI and BOQ audit perform relevance filtering later.
+  const matchMode = "any" as const;
   const { results } = await scrapeAllSources({
     include: keywords,
     exclude: excludeKeywords,
