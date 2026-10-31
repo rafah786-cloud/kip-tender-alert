@@ -67,10 +67,13 @@ jobs:
 
       - name: Build production bundle
         run: bun run build
-      - name: Smoke-test Vite development SSR
+      - name: Smoke-test Vite development and browser rendering
         shell: bash
         run: |
           set -euo pipefail
+          npm install --no-save --package-lock=false playwright
+          npx playwright install --with-deps chromium
+
           bun run dev -- --host 127.0.0.1 --port 5173 > /tmp/vite-dev.log 2>&1 &
           server_pid=$!
           cleanup() {
@@ -94,16 +97,56 @@ jobs:
           done
 
           if [ "$status" != "200" ]; then
-            echo "Vite dev homepage returned HTTP ${status:-no-response}."
+            echo "Vite dev homepage returned HTTP $status."
             cat /tmp/vite-dev.log
             exit 1
           fi
 
-          if grep -q "This page didn't load" /tmp/vite-home.html; then
-            echo "Vite served the application error fallback instead of the homepage."
-            cat /tmp/vite-dev.log
-            exit 1
-          fi
+          node <<'NODE'
+          const { chromium } = require("playwright");
 
-          echo "Vite development homepage returned HTTP 200 without the application error fallback."
-          echo "Homepage bytes: $(wc -c < /tmp/vite-home.html)"
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            try {
+              const page = await browser.newPage();
+              const pageErrors = [];
+              page.on("pageerror", (error) => pageErrors.push(error.stack || error.message));
+              page.on("console", (message) => {
+                if (message.type() === "error") pageErrors.push(message.text());
+              });
+
+              const response = await page.goto("http://127.0.0.1:5173/", {
+                waitUntil: "networkidle",
+                timeout: 45000,
+              });
+              await page.waitForTimeout(1500);
+
+              const body = await page.locator("body").innerText();
+              console.log("Homepage HTTP status:", response?.status());
+              console.log("Rendered page text:", body.slice(0, 1200));
+
+              if (!response || response.status() !== 200) {
+                throw new Error("Homepage did not return HTTP 200 in Chromium.");
+              }
+              if (body.includes("This page didn't load")) {
+                throw new Error("React rendered the root error boundary instead of the administrator screen.");
+              }
+              if (!/Tender Watch|Administrator access|Secure Tender Watch/i.test(body)) {
+                throw new Error("Expected Tender Watch administrator screen was not rendered.");
+              }
+              if (pageErrors.length) {
+                console.error("Browser errors:", pageErrors.join("\n\n"));
+                throw new Error("Browser reported runtime errors during initial render.");
+              }
+              console.log("Browser smoke test passed: Tender Watch administrator screen rendered.");
+            } finally {
+              await browser.close();
+            }
+          })().catch((error) => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          NODE
+
+          echo "Vite server output:"
+          cat /tmp/vite-dev.log
