@@ -8,8 +8,11 @@ const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const DEEP_SYSTEM = `You are auditing a single Indian government tender by reading its
 detail page and attached documents (BOQ / tender notice / contract / schedule).
 Decide whether the tender's SCOPE OF SUPPLY includes mattresses or directly
-related bedding products (coir/foam/spring/hospital mattress, mattress cover,
-pillow, bed-roll / bedding kit). Hospital beds as furniture alone DO NOT count.
+related bedding products: coir/foam/spring/hospital/ICU/air mattresses, mattress
+covers and protectors, bed sheets/bedsheets, bed linen, pillow and pillow covers,
+bolsters, blankets, quilts, bedding kits and bed-rolls. Also count hospital or
+patient beds ONLY when a mattress is explicitly included in the supply scope.
+Hospital beds as furniture alone DO NOT count.
 
 Return strict JSON: {"verdict":"yes|no|maybe","confidence":0-1,"reason":"<=30 words","category":"<short tag>","excerpt":"<<=240 chars quote from the doc that justifies the verdict>"}`;
 
