@@ -180,6 +180,34 @@ async function directFetchFallback(url: string): Promise<ScrapeOk | ScrapeErr> {
   }
 }
 
+
+/**
+ * One-page, value-free diagnostic for the exact scraper module used by scans.
+ * Never returns the Firecrawl key or raw portal contents.
+ */
+export async function diagnoseFirecrawlScraper(): Promise<{
+  keyConfigured: boolean;
+  cooldownActiveAtStart: boolean;
+  cooldownSecondsAtStart: number;
+  ok: boolean;
+  markdownChars: number;
+  error?: string;
+}> {
+  const keyConfigured = Boolean(getServerRuntimeEnv("FIRECRAWL_API_KEY"));
+  const cooldownMs = Math.max(0, firecrawlCooldownUntil - Date.now());
+  const result = await firecrawlScrape(
+    "https://eprocure.gov.in/eprocure/app?page=FrontEndLatestActiveTenders&service=page",
+  );
+  return {
+    keyConfigured,
+    cooldownActiveAtStart: cooldownMs > 0,
+    cooldownSecondsAtStart: Math.ceil(cooldownMs / 1000),
+    ok: result.ok,
+    markdownChars: result.ok ? result.markdown.length : 0,
+    ...(!result.ok ? { error: result.error.slice(0, 300) } : {}),
+  };
+}
+
 async function firecrawlScrape(url: string, shouldStop?: () => Promise<boolean>): Promise<ScrapeOk | ScrapeErr> {
   // Read from the server runtime binding first, with process.env as fallback.
   // Lovable's deployed Nitro/Cloudflare runtime does not always permit writes to
