@@ -109,6 +109,17 @@ export async function runTenderCheck(): Promise<RunResult> {
     .upsert(healthRows, { onConflict: "source_key" });
   if (healthError) {
     console.error("[tender-runner] could not record source health:", healthError.message);
+  } else if (healthRows.length > 0) {
+    // Remove health rows for portals that are no longer in the active scanner
+    // list. Otherwise retired sources remain visible as permanent old errors.
+    const activeSourceKeys = `(${healthRows.map((row) => `"${row.source_key.replace(/"/g, '\\"')}"`).join(",")})`;
+    const { error: staleHealthError } = await sb
+      .from("tender_source_health")
+      .delete()
+      .not("source_key", "in", activeSourceKeys);
+    if (staleHealthError) {
+      console.error("[tender-runner] could not prune retired source health:", staleHealthError.message);
+    }
   }
 
   // Flatten rows for AI classification.
