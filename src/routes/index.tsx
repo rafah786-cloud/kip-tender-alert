@@ -8,6 +8,7 @@ import {
   BellRing,
   CheckCheck,
   ChevronDown,
+  Download,
   CheckCircle2,
   AlertTriangle,
   Globe,
@@ -68,6 +69,67 @@ function relTime(iso: string | null | undefined): string {
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
   return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+type TenderExportRow = {
+  source: string;
+  source_url: string;
+  title: string;
+  organisation: string | null;
+  published_at: string | null;
+  closing_at: string | null;
+  tender_url: string | null;
+  matched_keywords: string[];
+  raw_excerpt: string | null;
+  seen: boolean;
+  created_at: string;
+  ai_verdict: string | null;
+  ai_reason: string | null;
+  ai_confidence: number | null;
+  docs_checked: number | null;
+  doc_excerpt: string | null;
+};
+
+function csvCell(value: unknown): string {
+  const raw = String(value ?? "");
+  // Prefix spreadsheet formula-like values to prevent CSV formula injection.
+  const safe = /^[\\s\\u0000-\\u001f]*[=+\\-@]/.test(raw) ? `'${raw}` : raw;
+  return `"${safe.replace(/"/g, '""')}"`;
+}
+
+function exportTenderRows(rows: TenderExportRow[]): void {
+  if (rows.length === 0) return;
+  const columns: Array<[string, (row: TenderExportRow) => unknown]> = [
+    ["Tender title", (row) => row.title],
+    ["Organisation", (row) => row.organisation],
+    ["Portal", (row) => getSourceLabel(row.source, row.source_url)],
+    ["Portal URL", (row) => row.source_url],
+    ["Tender notice URL", (row) => row.tender_url],
+    ["Published date", (row) => row.published_at],
+    ["Closing date", (row) => row.closing_at],
+    ["Discovered at", (row) => row.created_at],
+    ["Read status", (row) => row.seen ? "Read" : "New"],
+    ["AI verdict", (row) => row.ai_verdict],
+    ["AI confidence", (row) => row.ai_confidence == null ? "" : Math.round(row.ai_confidence * 100) + "%"],
+    ["AI reason", (row) => row.ai_reason],
+    ["Matched category / keywords", (row) => row.matched_keywords.join("; ")],
+    ["Documents checked", (row) => row.docs_checked],
+    ["Document excerpt", (row) => row.doc_excerpt],
+    ["Listing excerpt", (row) => row.raw_excerpt],
+  ];
+  const csv = [
+    columns.map(([label]) => csvCell(label)).join(","),
+    ...rows.map((row) => columns.map(([, value]) => csvCell(value(row))).join(",")),
+  ].join("\\r\\n");
+  const blob = new Blob(["\\uFEFF", csv], { type: "text/csv;charset=utf-8" });
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = `tender-finder-results-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
 }
 
 const SOURCE_DISPLAY_NAMES: Record<string, string> = {
@@ -835,6 +897,17 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
               className="h-9 pl-8"
             />
           </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => exportTenderRows(filtered)}
+            disabled={filtered.length === 0}
+            className="gap-1.5"
+            title="Export the currently visible filtered tender results"
+          >
+            <Download className="h-4 w-4" />
+            Export CSV ({filtered.length})
+          </Button>
           {newCount > 0 && (
             <Button
               size="sm"
@@ -960,7 +1033,7 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
 
         <footer className="flex flex-col gap-2 border-t border-border/70 pt-5 text-center text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:text-left">
           <span>Government procurement monitor · Mattress, bedding & related supplies</span>
-          <span>Scheduled checks are designed to run every 2 hours. Browser notifications require permission and an open app session.</span>
+          <span>Scheduled checks run every 2 hours. Export CSV downloads the currently filtered results.</span>
         </footer>
       </main>
     </div>
@@ -1043,7 +1116,6 @@ function KeywordEditor({
 function SettingsPanel({
   keywords,
   excludeKeywords,
-  matchMode,
   notifyEmail,
   emailSuppressed,
   lastMessage,
@@ -1057,7 +1129,6 @@ function SettingsPanel({
 }: {
   keywords: string[];
   excludeKeywords: string[];
-  matchMode: MatchMode;
   notifyEmail: string | null;
   emailSuppressed: boolean;
   lastMessage: string | null;
@@ -1071,7 +1142,6 @@ function SettingsPanel({
 }) {
   const [list, setList] = useState<string[]>(keywords);
   const [exList, setExList] = useState<string[]>(excludeKeywords);
-  const [mode, setMode] = useState<MatchMode>(matchMode);
   const [saving, setSaving] = useState(false);
   const [emailDraft, setEmailDraft] = useState<string>(notifyEmail ?? "");
   const [savingEmail, setSavingEmail] = useState(false);
@@ -1081,7 +1151,6 @@ function SettingsPanel({
 
   useEffect(() => setList(keywords), [keywords]);
   useEffect(() => setExList(excludeKeywords), [excludeKeywords]);
-  useEffect(() => setMode(matchMode), [matchMode]);
   useEffect(() => setEmailDraft(notifyEmail ?? ""), [notifyEmail]);
   useEffect(() => setMinConf(aiMinConfidence), [aiMinConfidence]);
   useEffect(() => setIncludeMaybe(aiIncludeMaybe), [aiIncludeMaybe]);
@@ -1232,29 +1301,15 @@ function SettingsPanel({
 
 
 
-      <section className="space-y-3 border-t border-border pt-4">
-        <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Match mode
-          </h3>
-          <p className="mt-1 text-xs text-muted-foreground">{activeMode.hint}</p>
-        </div>
-        <div className="flex rounded-md border border-border p-0.5">
-          {modes.map((m) => (
-            <button
-              key={m.value}
-              type="button"
-              onClick={() => setMode(m.value)}
-              className={`flex-1 rounded px-3 py-1.5 text-xs font-medium transition ${
-                mode === m.value
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
+      <section className="space-y-2 border-t border-border pt-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Discovery matching
+        </h3>
+        <p className="text-xs leading-5 text-muted-foreground">
+          Broad matching is always used during discovery: a listing can enter the review queue when any included term appears.
+          This avoids the strict “all words” setting accidentally hiding relevant tenders. AI and document-level BOQ checks
+          then assess whether the actual scope includes mattresses or related products.
+        </p>
       </section>
 
       <section className="space-y-3 border-t border-border pt-4">
@@ -1299,7 +1354,7 @@ function SettingsPanel({
           onClick={async () => {
             setSaving(true);
             try {
-              await onSave(list, exList, mode);
+              await onSave(list, exList, "any");
               onClose();
             } catch (e) {
               toast.error(e instanceof Error ? e.message : "Could not save match settings");
