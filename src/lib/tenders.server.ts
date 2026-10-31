@@ -132,7 +132,6 @@ interface ScrapeErr {
 }
 
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
-let firecrawlCooldownUntil = 0;
 async function directFetchFallback(url: string): Promise<ScrapeOk | ScrapeErr> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 12_000);
@@ -213,7 +212,7 @@ async function firecrawlScrape(url: string, shouldStop?: () => Promise<boolean>)
   // Lovable's deployed Nitro/Cloudflare runtime does not always permit writes to
   // process.env, so reading process.env alone can falsely report a missing key.
   const fcKey = getServerRuntimeEnv("FIRECRAWL_API_KEY");
-  if (!fcKey || Date.now() < firecrawlCooldownUntil) {
+  if (!fcKey) {
     return directFetchFallback(url);
   }
 
@@ -258,15 +257,8 @@ async function firecrawlScrape(url: string, shouldStop?: () => Promise<boolean>)
               ? "Firecrawl rate limit reached (429)."
               : `Firecrawl request failed (${res.status}): ${JSON.stringify(json).slice(0, 240)}`;
 
-      if (res.status === 429) {
-        const retryAfter = Number(res.headers.get("retry-after"));
-        const cooldownMs =
-          Number.isFinite(retryAfter) && retryAfter > 0
-            ? Math.min(retryAfter, 300) * 1000
-            : 60_000;
-        firecrawlCooldownUntil = Math.max(firecrawlCooldownUntil, Date.now() + cooldownMs);
-      }
-
+      // A 429 affects this source only. Do not set a process-wide cooldown:
+      // doing so made every queued portal bypass Firecrawl for the next minute.
       // Keep scanning when Firecrawl is throttled or the key/quota is unavailable.
       // Direct HTML fetch is best-effort; preserve the Firecrawl error when it fails.
       const fallback = await directFetchFallback(url);
@@ -503,7 +495,7 @@ export async function scrapeAllSources(
 ): Promise<{
   results: { source: TenderSource; matches: ParsedTender[]; error?: string }[];
 }> {
-  const raw = await mapWithConcurrency([...new Map(TENDER_SOURCES.map((source) => [source.key, source])).values()], 4, async (source) => {
+  const raw = await mapWithConcurrency([...new Map(TENDER_SOURCES.map((source) => [source.key, source])).values()], 2, async (source) => {
     if (shouldStop && await shouldStop()) {
       return { source, matches: [] as ParsedTender[], error: "Scan stopped by administrator." };
     }
