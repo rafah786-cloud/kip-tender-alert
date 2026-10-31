@@ -89,6 +89,39 @@ export const Route = createFileRoute("/api/public/debug/runtime-env")({
           }
         }
 
+        let creditUsage: {
+          checked: boolean;
+          httpStatus?: number;
+          remainingCredits?: number;
+          planCredits?: number;
+          error?: string;
+        } = { checked: false };
+
+        if (new URL(request.url).searchParams.get("probe") === "firecrawl" && firecrawl.configured) {
+          try {
+            const apiKey = getServerRuntimeEnv("FIRECRAWL_API_KEY")!;
+            const response = await fetch("https://api.firecrawl.dev/v2/team/credit-usage", {
+              headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+              signal: AbortSignal.timeout(15000),
+            });
+            const body = await response.text().catch(() => "");
+            let parsed: { success?: boolean; data?: { remainingCredits?: number; planCredits?: number }; error?: string } = {};
+            try { parsed = body ? JSON.parse(body) : {}; } catch { parsed = {}; }
+            creditUsage = {
+              checked: true,
+              httpStatus: response.status,
+              ...(typeof parsed.data?.remainingCredits === "number" ? { remainingCredits: parsed.data.remainingCredits } : {}),
+              ...(typeof parsed.data?.planCredits === "number" ? { planCredits: parsed.data.planCredits } : {}),
+              ...(!response.ok ? { error: `Credit usage endpoint returned HTTP ${response.status}: ${(parsed.error ?? "unavailable").slice(0, 160)}` } : {}),
+            };
+          } catch (error) {
+            creditUsage = {
+              checked: true,
+              error: error instanceof Error ? error.message.slice(0, 160) : "Credit usage check failed",
+            };
+          }
+        }
+
         return Response.json({
           ok: true,
           firecrawl: {
@@ -98,6 +131,7 @@ export const Route = createFileRoute("/api/public/debug/runtime-env")({
             workerBindingConfigured: firecrawl.workerBindingConfigured,
           },
           firecrawlProbe: providerProbe,
+          firecrawlCreditUsage: creditUsage,
           serverSupabaseConfigured:
             Boolean(getServerRuntimeEnv("SUPABASE_URL")) &&
             Boolean(getServerRuntimeEnv("SUPABASE_SERVICE_ROLE_KEY")),
