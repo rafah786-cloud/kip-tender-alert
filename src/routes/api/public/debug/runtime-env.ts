@@ -45,6 +45,50 @@ export const Route = createFileRoute("/api/public/debug/runtime-env")({
 
         // Never return secret values, prefixes, lengths, or hashes.
         const firecrawl = getServerRuntimeEnvDiagnostics("FIRECRAWL_API_KEY");
+        let providerProbe: {
+          attempted: boolean;
+          httpStatus?: number;
+          apiSuccess?: boolean;
+          markdownChars?: number;
+          error?: string;
+        } = { attempted: false };
+
+        if (new URL(request.url).searchParams.get("probe") === "firecrawl" && firecrawl.configured) {
+          providerProbe = { attempted: true };
+          const apiKey = getServerRuntimeEnv("FIRECRAWL_API_KEY")!;
+          try {
+            const response = await fetch("https://api.firecrawl.dev/v2/scrape", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${apiKey}`,
+              },
+              body: JSON.stringify({
+                url: "https://eprocure.gov.in/eprocure/app?page=FrontEndLatestActiveTenders&service=page",
+                formats: ["markdown"],
+                onlyMainContent: true,
+                waitFor: 1000,
+              }),
+              signal: AbortSignal.timeout(45000),
+            });
+            const body = await response.text().catch(() => "");
+            let parsed: { success?: boolean; data?: { markdown?: string }; error?: string; message?: string } = {};
+            try { parsed = body ? JSON.parse(body) : {}; } catch { parsed = { message: body.slice(0, 180) }; }
+            providerProbe = {
+              attempted: true,
+              httpStatus: response.status,
+              apiSuccess: response.ok && parsed.success !== false,
+              markdownChars: parsed.data?.markdown?.length ?? 0,
+              ...(!response.ok ? { error: `Firecrawl returned HTTP ${response.status}: ${(parsed.error ?? parsed.message ?? "provider rejected request").slice(0, 220)}` } : {}),
+            };
+          } catch (error) {
+            providerProbe = {
+              attempted: true,
+              error: error instanceof Error ? error.message.slice(0, 220) : "Firecrawl request failed",
+            };
+          }
+        }
+
         return Response.json({
           ok: true,
           firecrawl: {
@@ -53,6 +97,7 @@ export const Route = createFileRoute("/api/public/debug/runtime-env")({
             processEnvConfigured: firecrawl.processEnvConfigured,
             workerBindingConfigured: firecrawl.workerBindingConfigured,
           },
+          firecrawlProbe: providerProbe,
           serverSupabaseConfigured:
             Boolean(getServerRuntimeEnv("SUPABASE_URL")) &&
             Boolean(getServerRuntimeEnv("SUPABASE_SERVICE_ROLE_KEY")),
