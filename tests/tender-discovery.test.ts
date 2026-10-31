@@ -35,6 +35,14 @@ describe("Tender Finder discovery regression tests", () => {
     expect(rows[0]?.title).toContain("Supply of 100 Foam Mattresses");
     expect(rows[0]?.tender_url).toBe("https://procurement.example.gov.in/tender/123");
     expect(rows[0]?.closing_at).toBe("02-Nov-2099 06:00 PM");
+
+    const spacedMonth = [
+      "| Tender Title | Reference No | Closing Date | Bid Opening Date |",
+      "| --- | --- | --- | --- |",
+      "| [Supply of 50 Coir Mattresses](https://procurement.example.gov.in/tender/456) | REF-456 | 02 Nov 2099 06:00 PM | 03 Nov 2099 10:00 AM |",
+    ].join("\\n");
+    const spacedRows = parseListing(source, spacedMonth, { include: ["coir mattress"], exclude: [], mode: "any" });
+    expect(spacedRows[0]?.closing_at).toBe("02 Nov 2099 06:00 PM");
   });
 
   test("distinguishes a public feed from a shell with no tender rows", () => {
@@ -58,6 +66,7 @@ describe("Tender Finder discovery regression tests", () => {
     expect(extractDateNearLabel("Bid End Date/Time 02-11-2099 18:00:00", ["Bid End Date/Time"])).toBe("02-11-2099 18:00:00");
     expect(extractDateNearLabel("Bid End Date/Time 02-Nov-2099 06:00 PM", ["Bid End Date/Time"])).toBe("02-Nov-2099 06:00 PM");
     expect(extractDateNearLabel("Bid End Date 2099-11-02", ["Bid End Date"])).toBe("02-11-2099");
+    expect(extractDateNearLabel("Bid End Date 02 November 2099 6:00 PM", ["Bid End Date"])).toBe("02-02-2099 6:00 PM");
     expect(extractTenderClosingDate("Bid End Date/Time | 02-Nov-2099 06:00 PM")).toBe("02-Nov-2099 06:00 PM");
   });
 
