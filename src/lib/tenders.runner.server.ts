@@ -24,11 +24,17 @@ export interface RunResult {
 
 function isTenderDeadlinePassed(value: string | null | undefined): boolean {
   if (!value) return false;
-  const match = value.match(/(\\d{1,2})[-/](\\d{1,2})[-/](\\d{4})(?:\\s+(\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?/);
+  const match = value.match(/(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?/i);
   if (!match) return false;
-  const [, day, month, year, hour = "23", minute = "59", second = "59"] = match;
+  const [, day, month, year, hourRaw = "23", minute = "59", second = "59", meridiem] = match;
+  let hour = Number(hourRaw);
+  if (meridiem) {
+    if (hour < 1 || hour > 12) return false;
+    if (meridiem.toUpperCase() === "AM") hour = hour === 12 ? 0 : hour;
+    else hour = hour === 12 ? 12 : hour + 12;
+  }
   // Government bid deadlines are published in Indian Standard Time (UTC+05:30).
-  const deadlineMs = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)) - (330 * 60 * 1000);
+  const deadlineMs = Date.UTC(Number(year), Number(month) - 1, Number(day), hour, Number(minute), Number(second)) - (330 * 60 * 1000);
   if (!Number.isFinite(deadlineMs)) return false;
   return deadlineMs < Date.now();
 }
