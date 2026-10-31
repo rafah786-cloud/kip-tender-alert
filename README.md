@@ -45,3 +45,7 @@ Tender Watch supports an administrator-only **Stop Scan** action while a scan is
 ## Sync and deployment
 
 Pushing a commit to the active synced branch (currently `main`) updates the Lovable project code and editor preview when Git sync receives the push. A GitHub push does **not** publish the public website. After verifying the editor preview, publish the project in Lovable to update `https://tenders.zizzmattress.com`.
+
+
+<!-- lovable-sync-notice: 2026-10-31 scanner cooldown fix -->
+The active scanner now isolates Firecrawl 429 handling per source and limits scan concurrency to two. The existing Lovable project must sync this branch before the change is published.
