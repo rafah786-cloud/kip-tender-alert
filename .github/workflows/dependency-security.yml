@@ -67,3 +67,43 @@ jobs:
 
       - name: Build production bundle
         run: bun run build
+      - name: Smoke-test Vite development SSR
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun run dev -- --host 127.0.0.1 --port 5173 > /tmp/vite-dev.log 2>&1 &
+          server_pid=$!
+          cleanup() {
+            kill "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          status=""
+          for attempt in $(seq 1 60); do
+            status="$(curl -sS -o /tmp/vite-home.html -w '%{http_code}' http://127.0.0.1:5173/ || true)"
+            if [ "$status" = "200" ]; then
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              echo "Vite dev server exited before the homepage responded."
+              cat /tmp/vite-dev.log
+              exit 1
+            fi
+            sleep 1
+          done
+
+          if [ "$status" != "200" ]; then
+            echo "Vite dev homepage returned HTTP ${status:-no-response}."
+            cat /tmp/vite-dev.log
+            exit 1
+          fi
+
+          if grep -q "This page didn't load" /tmp/vite-home.html; then
+            echo "Vite served the application error fallback instead of the homepage."
+            cat /tmp/vite-dev.log
+            exit 1
+          fi
+
+          echo "Vite development homepage returned HTTP 200 without the application error fallback."
+          echo "Homepage bytes: $(wc -c < /tmp/vite-home.html)"
