@@ -34,12 +34,13 @@ import {
   startCheckInBackground,
   stopCheckNow,
   updateAiSettings,
-  updateMatchSettings,
+  updateKeywordSets,
   updateNotifyEmail,
-  type MatchMode,
 } from "@/lib/tenders.functions";
 
 
+import type { KeywordSet } from "@/lib/keyword-sets";
+import { CONSTRUCTION_PWD_STARTER } from "@/lib/keyword-sets";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -80,6 +81,7 @@ type TenderExportRow = {
   closing_at: string | null;
   tender_url: string | null;
   matched_keywords: string[];
+  matched_keyword_sets?: string[];
   raw_excerpt: string | null;
   seen: boolean;
   created_at: string;
@@ -112,7 +114,8 @@ function exportTenderRows(rows: TenderExportRow[]): void {
     ["AI verdict", (row) => row.ai_verdict],
     ["AI confidence", (row) => row.ai_confidence == null ? "" : Math.round(row.ai_confidence * 100) + "%"],
     ["AI reason", (row) => row.ai_reason],
-    ["Matched category / keywords", (row) => row.matched_keywords.join("; ")],
+    ["Matched search sets", (row) => (row.matched_keyword_sets ?? []).join("; ")],
+    ["Matched keywords", (row) => row.matched_keywords.join("; ")],
     ["Documents checked", (row) => row.docs_checked],
     ["Document excerpt", (row) => row.doc_excerpt],
     ["Listing excerpt", (row) => row.raw_excerpt],
@@ -350,7 +353,7 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
   const stopCheckFn = useServerFn(stopCheckNow);
   const markSeenFn = useServerFn(markSeen);
   const markAllSeenFn = useServerFn(markAllSeen);
-  const updateMatchSettingsFn = useServerFn(updateMatchSettings);
+  const updateKeywordSetsFn = useServerFn(updateKeywordSets);
   const updateNotifyEmailFn = useServerFn(updateNotifyEmail);
   const updateAiSettingsFn = useServerFn(updateAiSettings);
 
@@ -745,8 +748,7 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
 
         {showSettings && (
           <SettingsPanel
-            keywords={settingsQ.data?.keywords ?? []}
-            excludeKeywords={settingsQ.data?.exclude_keywords ?? []}
+            keywordSets={settingsQ.data?.keyword_sets ?? []}
             notifyEmail={settingsQ.data?.notify_email ?? null}
             emailSuppressed={settingsQ.data?.email_suppressed ?? false}
             lastMessage={settingsQ.data?.last_run_message ?? null}
@@ -754,12 +756,11 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
             aiMinConfidence={settingsQ.data?.ai_min_confidence ?? 0.6}
             aiIncludeMaybe={settingsQ.data?.ai_include_maybe ?? false}
             onClose={() => setShowSettings(false)}
-            onSave={async (kws, ex, mode) => {
-              await updateMatchSettingsFn({
-                data: { keywords: kws, exclude_keywords: ex, match_mode: mode },
-              });
-              toast.success("Match settings saved");
+            onSaveKeywordSets={async (sets) => {
+              await updateKeywordSetsFn({ data: { keyword_sets: sets } });
+              toast.success("Search sets saved");
               qc.invalidateQueries({ queryKey: ["settings"] });
+              qc.invalidateQueries({ queryKey: ["tenders"] });
               router.invalidate();
             }}
             onSaveEmail={async (email) => {
@@ -1112,9 +1113,81 @@ function KeywordEditor({
   );
 }
 
+function KeywordEditor({
+  label,
+  helper,
+  list,
+  onChange,
+  placeholder,
+  tone = "default",
+}: {
+  label: string;
+  helper: string;
+  list: string[];
+  onChange: (next: string[]) => void;
+  placeholder: string;
+  tone?: "default" | "danger";
+}) {
+  const [draft, setDraft] = useState("");
+  const add = () => {
+    const v = draft.trim();
+    if (!v) return;
+    if (!list.some((k) => k.toLowerCase() === v.toLowerCase())) onChange([...list, v]);
+    setDraft("");
+  };
+  const chipClass =
+    tone === "danger"
+      ? "bg-destructive/10 text-destructive border border-destructive/30"
+      : "bg-secondary text-secondary-foreground";
+  return (
+    <div className="space-y-2">
+      <div>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {label}
+        </h3>
+        <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
+      </div>
+      {list.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {list.map((k) => (
+            <span
+              key={k}
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs ${chipClass}`}
+            >
+              {k}
+              <button
+                onClick={() => onChange(list.filter((x) => x !== k))}
+                aria-label={`Remove ${k}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <Input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              add();
+            }
+          }}
+          placeholder={placeholder}
+          className="h-9"
+        />
+        <Button size="sm" variant="secondary" onClick={add}>
+          Add
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function SettingsPanel({
-  keywords,
-  excludeKeywords,
+  keywordSets,
   notifyEmail,
   emailSuppressed,
   lastMessage,
@@ -1122,12 +1195,11 @@ function SettingsPanel({
   aiMinConfidence,
   aiIncludeMaybe,
   onClose,
-  onSave,
+  onSaveKeywordSets,
   onSaveEmail,
   onSaveAi,
 }: {
-  keywords: string[];
-  excludeKeywords: string[];
+  keywordSets: KeywordSet[];
   notifyEmail: string | null;
   emailSuppressed: boolean;
   lastMessage: string | null;
@@ -1135,43 +1207,64 @@ function SettingsPanel({
   aiMinConfidence: number;
   aiIncludeMaybe: boolean;
   onClose: () => void;
-  onSave: (kws: string[], exclude: string[], mode: MatchMode) => Promise<void>;
+  onSaveKeywordSets: (sets: KeywordSet[]) => Promise<void>;
   onSaveEmail: (email: string | null) => Promise<void>;
   onSaveAi: (minConf: number, includeMaybe: boolean) => Promise<void>;
 }) {
-  const [list, setList] = useState<string[]>(keywords);
-  const [exList, setExList] = useState<string[]>(excludeKeywords);
-  const [saving, setSaving] = useState(false);
+  const [sets, setSets] = useState<KeywordSet[]>(keywordSets);
+  const [selectedSetId, setSelectedSetId] = useState<string>(keywordSets[0]?.id ?? "mattress");
+  const [savingSets, setSavingSets] = useState(false);
   const [emailDraft, setEmailDraft] = useState<string>(notifyEmail ?? "");
   const [savingEmail, setSavingEmail] = useState(false);
   const [minConf, setMinConf] = useState<number>(aiMinConfidence);
   const [includeMaybe, setIncludeMaybe] = useState<boolean>(aiIncludeMaybe);
   const [savingAi, setSavingAi] = useState(false);
-
-  useEffect(() => setList(keywords), [keywords]);
-  useEffect(() => setExList(excludeKeywords), [excludeKeywords]);
+  useEffect(() => {
+    setSets(keywordSets);
+    if (!keywordSets.some((set) => set.id === selectedSetId)) setSelectedSetId(keywordSets[0]?.id ?? "mattress");
+  }, [keywordSets, selectedSetId]);
   useEffect(() => setEmailDraft(notifyEmail ?? ""), [notifyEmail]);
   useEffect(() => setMinConf(aiMinConfidence), [aiMinConfidence]);
   useEffect(() => setIncludeMaybe(aiIncludeMaybe), [aiIncludeMaybe]);
 
+  const activeSet = sets.find((set) => set.id === selectedSetId) ?? sets[0];
+  const updateActiveSet = (patch: Partial<KeywordSet>) => {
+    if (!activeSet) return;
+    setSets((current) => current.map((set) => set.id === activeSet.id ? { ...set, ...patch } : set));
+  };
+  const addCustomSet = () => {
+    const id = "custom-" + Date.now().toString(36);
+    setSets((current) => [...current, {
+      id, name: "New search set", enabled: false, match_mode: "any",
+      include_keywords: [], exclude_keywords: [],
+      ai_scope: "Describe what the actual tender scope and BOQ must contain to count as relevant.",
+    }]);
+    setSelectedSetId(id);
+  };
+  const addConstructionPreset = () => {
+    const existing = sets.find((set) => set.id === CONSTRUCTION_PWD_STARTER.id);
+    if (existing) { setSelectedSetId(existing.id); return; }
+    setSets((current) => [...current, { ...CONSTRUCTION_PWD_STARTER, include_keywords: [...CONSTRUCTION_PWD_STARTER.include_keywords] }]);
+    setSelectedSetId(CONSTRUCTION_PWD_STARTER.id);
+  };
+  const removeActiveSet = () => {
+    if (!activeSet || sets.length <= 1) return;
+    const remaining = sets.filter((set) => set.id !== activeSet.id);
+    setSets(remaining);
+    setSelectedSetId(remaining[0]?.id ?? "");
+  };
 
   return (
     <Card className="p-4 space-y-5">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold">Settings</h2>
-        <button onClick={onClose} aria-label="Close" className="text-muted-foreground">
-          <X className="h-4 w-4" />
-        </button>
+        <button onClick={onClose} aria-label="Close" className="text-muted-foreground"><X className="h-4 w-4" /></button>
       </div>
 
       <section className="space-y-3">
         <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Email alerts
-          </h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Get an instant email when new matching tenders are found. Leave blank to disable.
-          </p>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Email alerts</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Get an instant email when new matching tenders are found. Leave blank to disable.</p>
         </div>
         {emailSuppressed && notifyEmail && (
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-300">
@@ -1179,189 +1272,116 @@ function SettingsPanel({
           </div>
         )}
         <div className="flex gap-2">
-          <Input
-            type="email"
-            value={emailDraft}
-            onChange={(e) => setEmailDraft(e.target.value)}
-            placeholder="you@example.com"
-            className="h-9"
-          />
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={savingEmail}
-            onClick={async () => {
-              setSavingEmail(true);
-              try {
-                await onSaveEmail(emailDraft.trim() || null);
-              } catch (e) {
-                toast.error(e instanceof Error ? e.message : "Could not save email alert settings");
-              } finally {
-                setSavingEmail(false);
-              }
-            }}
-          >
-            {savingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
-          </Button>
-          {notifyEmail && (
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={savingEmail}
-              onClick={async () => {
-                setSavingEmail(true);
-                try {
-                  await onSaveEmail(null);
-                  setEmailDraft("");
-                } catch (e) {
-                  toast.error(e instanceof Error ? e.message : "Could not disable email alerts");
-                } finally {
-                  setSavingEmail(false);
-                }
-              }}
-            >
-              Off
-            </Button>
-          )}
+          <Input type="email" value={emailDraft} onChange={(e) => setEmailDraft(e.target.value)} placeholder="you@example.com" className="h-9" />
+          <Button size="sm" variant="secondary" disabled={savingEmail} onClick={async () => {
+            setSavingEmail(true);
+            try { await onSaveEmail(emailDraft.trim() || null); }
+            catch (e) { toast.error(e instanceof Error ? e.message : "Could not save email alert settings"); }
+            finally { setSavingEmail(false); }
+          }}>{savingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}</Button>
+          {notifyEmail && <Button size="sm" variant="ghost" disabled={savingEmail} onClick={async () => {
+            setSavingEmail(true);
+            try { await onSaveEmail(null); setEmailDraft(""); }
+            catch (e) { toast.error(e instanceof Error ? e.message : "Could not disable email alerts"); }
+            finally { setSavingEmail(false); }
+          }}>Off</Button>}
+        </div>
+      </section>
+
+      <section className="space-y-3 border-t border-border pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Search sets</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Each set has its own include/exclude terms and AI scope. Enable only the categories you want scanned.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {!sets.some((set) => set.id === CONSTRUCTION_PWD_STARTER.id) && <Button size="sm" variant="secondary" onClick={addConstructionPreset}>Add Construction / PWD</Button>}
+            <Button size="sm" variant="outline" onClick={addCustomSet}>New set</Button>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {sets.map((set) => (
+            <button key={set.id} type="button" onClick={() => setSelectedSetId(set.id)}
+              className={`rounded-lg border px-3 py-2 text-left transition ${activeSet?.id === set.id ? "border-primary bg-primary/5" : "border-border bg-background hover:bg-muted"}`}>
+              <span className="block text-xs font-semibold">{set.name}</span>
+              <span className="mt-0.5 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <span>{set.enabled ? "Enabled" : "Disabled"}</span><span>·</span><span>{set.include_keywords.length} terms</span>
+              </span>
+            </button>
+          ))}
+        </div>
+        {activeSet && (
+          <div className="space-y-4 rounded-xl border border-border p-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <label className="mb-1 block text-xs font-medium" htmlFor="keyword-set-name">Set name</label>
+                <Input id="keyword-set-name" value={activeSet.name} maxLength={60} onChange={(e) => updateActiveSet({ name: e.target.value })} className="h-9" />
+              </div>
+              <label className="flex shrink-0 items-center gap-2 pt-5 text-xs font-medium">
+                <input type="checkbox" checked={activeSet.enabled} onChange={(e) => updateActiveSet({ enabled: e.target.checked })} className="accent-primary" />
+                Enable search
+              </label>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium" htmlFor="keyword-set-mode">Matching rule</label>
+                <select id="keyword-set-mode" value={activeSet.match_mode} onChange={(e) => updateActiveSet({ match_mode: e.target.value as KeywordSet["match_mode"] })} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+                  <option value="any">Match any included term (recommended)</option>
+                  <option value="all">Require every included term</option>
+                  <option value="phrase">Match exact phrase text</option>
+                </select>
+              </div>
+              <div className="flex items-end text-xs text-muted-foreground">Each enabled set is checked independently. One tender can match multiple sets.</div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium" htmlFor="keyword-set-scope">AI / BOQ review instructions</label>
+              <textarea id="keyword-set-scope" value={activeSet.ai_scope} onChange={(e) => updateActiveSet({ ai_scope: e.target.value })} maxLength={1200} rows={3} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Describe what the actual scope of work or supply must contain..." />
+              <p className="mt-1 text-[10px] text-muted-foreground">The AI uses this scope to check detailed tender documents and BOQs.</p>
+            </div>
+            <KeywordEditor label="Include keywords" helper="A tender is queued for this set when its listing matches these terms." list={activeSet.include_keywords} onChange={(include_keywords) => updateActiveSet({ include_keywords })} placeholder="e.g. mattress, coir mattress" />
+            <KeywordEditor label="Exclude keywords" helper="Exclude only this set when a listing contains one of these terms." list={activeSet.exclude_keywords} onChange={(exclude_keywords) => updateActiveSet({ exclude_keywords })} placeholder="e.g. spring water, job vacancy" tone="danger" />
+            {sets.length > 1 && <div className="flex justify-end"><Button size="sm" variant="ghost" onClick={removeActiveSet}>Remove this set</Button></div>}
+          </div>
+        )}
+        <div className="flex justify-end">
+          <Button size="sm" disabled={savingSets || !sets.length} onClick={async () => {
+            setSavingSets(true);
+            try { await onSaveKeywordSets(sets); }
+            catch (e) { toast.error(e instanceof Error ? e.message : "Could not save search sets"); }
+            finally { setSavingSets(false); }
+          }}>{savingSets ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save search sets"}</Button>
         </div>
       </section>
 
       <section className="space-y-3 border-t border-border pt-4">
         <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            AI filter
-          </h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Only keep tenders the AI is at least this confident about. Optionally include
-            ambiguous “maybe” verdicts that meet the same threshold.
-          </p>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">AI filter</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Only keep tenders the AI is at least this confident about. Optionally include ambiguous “maybe” verdicts.</p>
         </div>
         <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">Minimum confidence</span>
-            <span className="font-medium tabular-nums">{Math.round(minConf * 100)}%</span>
-          </div>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            step={5}
-            value={Math.round(minConf * 100)}
-            onChange={(e) => setMinConf(Number(e.target.value) / 100)}
-            className="w-full accent-primary"
-            aria-label="Minimum AI confidence"
-          />
-          <div className="flex justify-between text-[10px] text-muted-foreground">
-            <span>Loose (more hits)</span>
-            <span>Strict (fewer, surer)</span>
-          </div>
+          <div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">Minimum confidence</span><span className="font-medium tabular-nums">{Math.round(minConf * 100)}%</span></div>
+          <input type="range" min={0} max={100} step={5} value={Math.round(minConf * 100)} onChange={(e) => setMinConf(Number(e.target.value) / 100)} className="w-full accent-primary" aria-label="Minimum AI confidence" />
+          <div className="flex justify-between text-[10px] text-muted-foreground"><span>Loose (more hits)</span><span>Strict (fewer, surer)</span></div>
         </div>
         <label className="flex items-start gap-2 text-xs">
-          <input
-            type="checkbox"
-            checked={includeMaybe}
-            onChange={(e) => setIncludeMaybe(e.target.checked)}
-            className="mt-0.5 accent-primary"
-          />
-          <span>
-            <span className="font-medium text-foreground">Also include “maybe” verdicts</span>
-            <span className="block text-muted-foreground">
-              When off, only confirmed “yes” tenders meeting the threshold are kept.
-            </span>
-          </span>
+          <input type="checkbox" checked={includeMaybe} onChange={(e) => setIncludeMaybe(e.target.checked)} className="mt-0.5 accent-primary" />
+          <span><span className="font-medium text-foreground">Also include “maybe” verdicts</span><span className="block text-muted-foreground">When off, only confirmed “yes” verdicts meeting the same threshold are kept.</span></span>
         </label>
         <div className="flex justify-end">
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={savingAi}
-            onClick={async () => {
-              setSavingAi(true);
-              try {
-                await onSaveAi(minConf, includeMaybe);
-              } catch (e) {
-                toast.error(e instanceof Error ? e.message : "Could not save AI filter");
-              } finally {
-                setSavingAi(false);
-              }
-            }}
-          >
-            {savingAi ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save AI filter"}
-          </Button>
+          <Button size="sm" variant="secondary" disabled={savingAi} onClick={async () => {
+            setSavingAi(true);
+            try { await onSaveAi(minConf, includeMaybe); }
+            catch (e) { toast.error(e instanceof Error ? e.message : "Could not save AI filter"); }
+            finally { setSavingAi(false); }
+          }}>{savingAi ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save AI filter"}</Button>
         </div>
       </section>
 
-
-
-      <section className="space-y-2 border-t border-border pt-4">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Discovery matching
-        </h3>
-        <p className="text-xs leading-5 text-muted-foreground">
-          Broad matching is always used during discovery: a listing can enter the review queue when any included term appears.
-          This avoids the strict “all words” setting accidentally hiding relevant tenders. AI and document-level BOQ checks
-          then assess whether the actual scope includes mattresses or related products.
-        </p>
-      </section>
-
-      <section className="space-y-3 border-t border-border pt-4">
-        <KeywordEditor
-          label="Include keywords"
-          helper="Tenders mentioning these are captured (case-insensitive)."
-          list={list}
-          onChange={setList}
-          placeholder="e.g. mattress, coir mattress"
-        />
-      </section>
-
-      <section className="space-y-3 border-t border-border pt-4">
-        <KeywordEditor
-          label="Exclude keywords"
-          helper="Drop any tender whose row contains one of these (e.g. spring water, hospital bed)."
-          list={exList}
-          onChange={setExList}
-          placeholder="e.g. spring water, water bed"
-          tone="danger"
-        />
-      </section>
-
-      {lastMessage && (
-        <div
-          className={`rounded-md border p-2.5 text-xs ${
-            lastStatus === "error"
-              ? "border-destructive/40 bg-destructive/10 text-destructive"
-              : "border-border bg-muted/40 text-muted-foreground"
-          }`}
-        >
-          {lastMessage}
-        </div>
-      )}
-      <div className="flex justify-end gap-2">
-        <Button variant="ghost" size="sm" onClick={onClose}>
-          Close
-        </Button>
-        <Button
-          size="sm"
-          disabled={saving}
-          onClick={async () => {
-            setSaving(true);
-            try {
-              await onSave(list, exList, "any");
-              onClose();
-            } catch (e) {
-              toast.error(e instanceof Error ? e.message : "Could not save match settings");
-            } finally {
-              setSaving(false);
-            }
-          }}
-        >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save match settings"}
-        </Button>
-      </div>
+      {lastMessage && <div className={`rounded-md border p-2.5 text-xs ${lastStatus === "error" ? "border-destructive/40 bg-destructive/10 text-destructive" : "border-border bg-muted/40 text-muted-foreground"}`}>{lastMessage}</div>}
+      <div className="flex justify-end gap-2"><Button variant="ghost" size="sm" onClick={onClose}>Close</Button></div>
     </Card>
   );
 }
-
 
 
 function EmptyState({ onCheck, loading }: { onCheck: () => void; loading: boolean }) {

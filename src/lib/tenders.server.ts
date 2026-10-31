@@ -1,6 +1,7 @@
 // Server-only helpers for scraping Indian government tender portals via Firecrawl.
 // Never import from client-reachable code.
 import { getServerRuntimeEnv } from "./runtime-env.server";
+import type { KeywordSet, KeywordSetMatchContext } from "./keyword-sets";
 
 export interface TenderSource {
   key: string;
@@ -350,6 +351,8 @@ export interface ParsedTender {
   matched_keywords: string[];
   raw_excerpt: string;
   fingerprint: string;
+  matched_keyword_sets?: string[];
+  matched_set_contexts?: KeywordSetMatchContext[];
 }
 
 function sha1(input: string): string {
@@ -372,6 +375,7 @@ export interface MatchOptions {
   include: string[];
   exclude: string[];
   mode: MatchMode;
+  sets?: KeywordSet[];
 }
 
 function escapeRe(s: string) {
@@ -414,30 +418,42 @@ export function termHits(text: string, term: string, mode: MatchMode): boolean {
   });
 }
 
-function findKeywordMatches(text: string, opts: MatchOptions): string[] {
+function findKeywordMatches(text: string, include: string[], exclude: string[], mode: MatchMode): string[] {
   const lower = text.toLowerCase();
-
-  // Exclusions always use word-boundary match; any hit disqualifies the row.
-  for (const ex of opts.exclude) {
-    const e = ex.trim().toLowerCase();
-    if (!e) continue;
-    const re = new RegExp(`(^|[^a-z0-9])${escapeRe(e)}([^a-z0-9]|$)`, "i");
+  for (const ex of exclude) {
+    const term = ex.trim().toLowerCase();
+    if (!term) continue;
+    const re = new RegExp(`(^|[^a-z0-9])${escapeRe(term)}([^a-z0-9]|$)`, "i");
     if (re.test(lower)) return [];
   }
-
-  const hits: string[] = [];
-  for (const kw of opts.include) {
-    if (termHits(lower, kw, opts.mode)) hits.push(kw);
-  }
-  if (hits.length === 0) return [];
-  if (opts.mode === "all") {
-    // every non-empty include term must hit
-    const required = opts.include.filter((k) => k.trim().length > 0);
-    if (hits.length < required.length) return [];
-  }
+  const hits = include.filter((term) => termHits(lower, term, mode));
+  if (mode === "all" && include.filter((term) => term.trim()).length > hits.length) return [];
   return [...new Set(hits)];
 }
 
+export function matchKeywordSets(text: string, opts: MatchOptions): {
+  matched_keywords: string[];
+  matched_keyword_sets: string[];
+  matched_set_contexts: KeywordSetMatchContext[];
+} {
+  const enabledSets = opts.sets?.filter((set) => set.enabled && set.include_keywords.length) ?? [];
+  if (!enabledSets.length) return {
+    matched_keywords: findKeywordMatches(text, opts.include, opts.exclude, opts.mode),
+    matched_keyword_sets: [],
+    matched_set_contexts: [],
+  };
+  const terms = new Set<string>();
+  const setNames = new Set<string>();
+  const contexts: KeywordSetMatchContext[] = [];
+  for (const set of enabledSets) {
+    const hits = findKeywordMatches(text, set.include_keywords, set.exclude_keywords, set.match_mode);
+    if (!hits.length) continue;
+    hits.forEach((hit) => terms.add(hit));
+    setNames.add(set.name);
+    contexts.push({ id: set.id, name: set.name, ai_scope: set.ai_scope, matched_keywords: hits });
+  }
+  return { matched_keywords: [...terms], matched_keyword_sets: [...setNames], matched_set_contexts: contexts };
+}
 
 /**
  * Parse a markdown blob from a tender listing page into candidate rows.
@@ -494,11 +510,10 @@ export function parseListing(
   for (const row of rows) {
     if (row.length < 20) continue;
 
-    let matches: string[] = [];
-    if (opts) {
-      matches = findKeywordMatches(row, opts);
-      if (matches.length === 0) continue;
-    }
+    const keywordMatch = opts
+      ? matchKeywordSets(row, opts)
+      : { matched_keywords: [] as string[], matched_keyword_sets: [] as string[], matched_set_contexts: [] as KeywordSetMatchContext[] };
+    if (opts && keywordMatch.matched_keywords.length === 0) continue;
 
     const linkMatch = row.match(/\[([^\]]+)\]\(([^)]+)\)/);
     const titleFromLink = linkMatch?.[1];
@@ -557,7 +572,9 @@ export function parseListing(
       published_at,
       closing_at,
       tender_url,
-      matched_keywords: matches,
+      matched_keywords: keywordMatch.matched_keywords,
+      matched_keyword_sets: keywordMatch.matched_keyword_sets,
+      matched_set_contexts: keywordMatch.matched_set_contexts,
       raw_excerpt: row.slice(0, 800),
       fingerprint,
     });
@@ -910,14 +927,22 @@ async function searchOfficialTenderIndex(
   // spreads indexed discovery across GeM, central NIC feeds, state/PSU sites
   // and government institutions without consuming the whole monthly search
   // allowance on every two-hour scan.
-  const querySegments = [
-    'site:bidplus.gem.gov.in (mattress OR mattresses OR "bed mattress" OR "hospital mattress" OR "ICU mattress" OR "coir mattress" OR "foam mattress" OR "air mattress" OR "bed sheets" OR bedsheets OR pillow OR bedding) (bid OR tender)',
-    '(site:eprocure.gov.in OR site:etenders.gov.in OR site:etenders.kerala.gov.in) (mattress OR "bed sheet" OR bedsheet OR pillow OR bedding OR "hospital bed") (tender OR procurement)',
-    '(site:gov.in OR site:nic.in OR site:edu.in OR site:ac.in) (mattress OR "bed sheets" OR bedsheets OR pillow OR bedding OR "ICU bed") (tender OR "Bid End Date") India',
-    '(site:gov.in OR site:nic.in OR site:nprocure.com) ("coir mattress" OR "rubberised coir" OR "foam mattress" OR "air mattress" OR "hospital linen" OR "linen supplies") (tender OR bid) India',
+  const domainSegments = [
+    "site:bidplus.gem.gov.in",
+    "(site:eprocure.gov.in OR site:etenders.gov.in OR site:etenders.kerala.gov.in)",
+    "(site:gov.in OR site:nic.in OR site:edu.in OR site:ac.in)",
+    "(site:gov.in OR site:nic.in OR site:nprocure.com)",
   ];
+  const activeSets = opts.sets?.filter((set) => set.enabled && set.include_keywords.length)
+    ?? [{ id: "default", name: "Search terms", enabled: true, match_mode: opts.mode, include_keywords: opts.include, exclude_keywords: opts.exclude, ai_scope: "Evaluate the tender against the matched search terms." }];
   const searchSlot = Math.floor(Date.now() / (2 * 60 * 60 * 1000));
-  const query = querySegments[searchSlot % querySegments.length];
+  const selectedSet = activeSets[searchSlot % activeSets.length]!;
+  const termChunks: string[][] = [];
+  for (let i = 0; i < selectedSet.include_keywords.length; i += 8) termChunks.push(selectedSet.include_keywords.slice(i, i + 8));
+  const selectedTerms = termChunks[Math.floor(searchSlot / activeSets.length) % Math.max(1, termChunks.length)] ?? selectedSet.include_keywords.slice(0, 8);
+  const queryTerms = selectedTerms.map((term) => '"' + term.replace(/"/g, "") + '"').join(" OR ");
+  const domain = domainSegments[Math.floor(searchSlot / Math.max(1, activeSets.length * termChunks.length)) % domainSegments.length];
+  const query = `${domain} (${queryTerms}) (tender OR bid OR procurement OR "Bid End Date") India`;
   let response: Response;
   try {
     response = await fetch("https://api.firecrawl.dev/v2/search", {
@@ -968,8 +993,8 @@ async function searchOfficialTenderIndex(
     const title = item.title ?? "";
     const description = item.description ?? "";
     const searchable = (title + "\n" + description).slice(0, 5000);
-    const matched = findKeywordMatches(searchable.toLowerCase(), opts);
-    if (matched.length === 0) continue;
+    const keywordMatch = matchKeywordSets(searchable, opts);
+    if (keywordMatch.matched_keywords.length === 0) continue;
     const tenderEvidence = /tender|bid|procurement|bid end date|tender id|bid number/i.test(searchable);
     const tenderDocumentPath = /showbidDocument|bidding\/bid|\/tenders?\/|tenderStore|attachments\/tenderfile|nicgep\/app|eprocure\/app/i.test(url.pathname);
     if (!tenderEvidence && !tenderDocumentPath) continue;
@@ -996,7 +1021,9 @@ async function searchOfficialTenderIndex(
 
     group.matches.push({
       title: searchResultTenderTitle(title, description) || title || host,
-      matched_keywords: matched,
+      matched_keywords: keywordMatch.matched_keywords,
+      matched_keyword_sets: keywordMatch.matched_keyword_sets,
+      matched_set_contexts: keywordMatch.matched_set_contexts,
       published_at: extractDateNearLabel(searchable, ["Published Date", "Published on", "Dated"]),
       closing_at: extractDateNearLabel(searchable, ["Bid End Date/Time", "Bid End Date", "Bid Submission End Date", "Closing Date"]),
       tender_url: url.href,
@@ -1087,17 +1114,19 @@ export async function scrapeAllSources(
     }
   }
 
-  // Cross-menu dedupe: the same tender shows up under Latest, By Location,
-  // By Organisation etc. Keep the first occurrence keyed on a normalised title.
-  const seenTitles = new Set<string>();
-  const results = raw.map((r) => {
-    const kept = r.matches.filter((m) => {
-      const norm = m.title.toLowerCase().replace(/\s+/g, " ").trim();
-      if (seenTitles.has(norm)) return false;
-      seenTitles.add(norm);
-      return true;
-    });
-    return { ...r, matches: kept };
+  // Merge category labels when the same notice appears under multiple feeds.
+  const seenTitles = new Map<string, ParsedTender>();
+  const results = raw.map((result) => {
+    const kept: ParsedTender[] = [];
+    for (const tender of result.matches) {
+      const key = tender.title.toLowerCase().replace(/\s+/g, " ").trim();
+      const previous = seenTitles.get(key);
+      if (!previous) { seenTitles.set(key, tender); kept.push(tender); continue; }
+      previous.matched_keywords = [...new Set([...(previous.matched_keywords ?? []), ...(tender.matched_keywords ?? [])])];
+      previous.matched_keyword_sets = [...new Set([...(previous.matched_keyword_sets ?? []), ...(tender.matched_keyword_sets ?? [])])];
+      previous.matched_set_contexts = [...new Map([...(previous.matched_set_contexts ?? []), ...(tender.matched_set_contexts ?? [])].map((ctx) => [ctx.id, ctx])).values()];
+    }
+    return { ...result, matches: kept };
   });
   return { results };
 }

@@ -1,26 +1,29 @@
 // Server-only: fetch a tender's detail page + attached BOQ/contract docs, then
 // re-classify with Gemini reading the actual document text (PDF understanding).
 import { getServerRuntimeEnv } from "./runtime-env.server";
+import type { KeywordSetMatchContext } from "./keyword-sets";
 
 const FIRECRAWL_URL = "https://api.firecrawl.dev/v2/scrape";
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
-const DEEP_SYSTEM = `You are auditing a single Indian government tender by reading its
-detail page and attached documents (BOQ / tender notice / contract / schedule).
-Decide whether the tender's SCOPE OF SUPPLY includes mattresses or directly
-related bedding products: coir/foam/spring/hospital/ICU/air mattresses, mattress
-covers and protectors, bed sheets/bedsheets, bed linen, pillow and pillow covers,
-bolsters, blankets, quilts, bedding kits and bed-rolls. Also count hospital or
-patient beds ONLY when a mattress is explicitly included in the supply scope.
-Hospital beds as furniture alone DO NOT count.
+const DEEP_SYSTEM = `You are auditing one Indian government tender by reading its detail page and attached BOQ / tender notice / contract documents.
+Judge the actual scope against the administrator's MATCHED SEARCH SETS in the user message. Each set gives a name, matched terms and an AI scope; those scopes define what is relevant.
 
-Return strict JSON: {"verdict":"yes|no|maybe","confidence":0-1,"reason":"<=30 words","category":"<short tag>","excerpt":"<<=240 chars quote from the doc that justifies the verdict>"}`;
+Rules:
+- Return "yes" when the actual scope or BOQ clearly fits at least one matched set.
+- Return "maybe" when the title is relevant but detailed scope is ambiguous or BOQ evidence is unavailable.
+- Return "no" when no matched set's scope is satisfied.
+- Do not assume a mattress/bedding requirement unless the Mattress set is present. Construction / PWD and future sets use their own scope.
+- A tender can satisfy multiple sets. Do not require it to match all sets.
+
+Return strict JSON: {"verdict":"yes|no|maybe","confidence":0-1,"reason":"<=30 words","category":"<short tag>","excerpt":"<<=240 chars quote from the doc that justifies the verdict>"}
 
 export interface DeepInput {
   title: string;
   organisation: string | null;
   source_label: string;
   tender_url: string;
+  search_context?: KeywordSetMatchContext[];
 }
 
 export interface DeepResult {
@@ -158,7 +161,7 @@ interface ContentBlock {
 }
 
 async function geminiDeepClassify(
-  ctx: { title: string; org: string | null; source: string; pageText: string },
+  ctx: { title: string; org: string | null; source: string; pageText: string; searchContext?: KeywordSetMatchContext[] },
   docs: { filename: string; mime: string; base64: string }[],
 ): Promise<DeepResult> {
   const key = getServerRuntimeEnv("LOVABLE_API_KEY");
@@ -169,8 +172,9 @@ async function geminiDeepClassify(
       type: "text",
       text:
         `TENDER:\n  Title: ${ctx.title}\n  Org: ${ctx.org ?? "?"}\n  Portal: ${ctx.source}\n\n` +
+        `MATCHED SEARCH SETS (evaluate independently):\n${JSON.stringify(ctx.searchContext ?? [])}\n\n` +
         `DETAIL PAGE (markdown, truncated):\n${ctx.pageText.slice(0, 12000)}\n\n` +
-        `Documents attached: ${docs.length}. Read them and decide.`,
+        `Documents attached: ${docs.length}. Read them and decide against the matched set scopes.`,
     },
   ];
   for (const d of docs) {
@@ -302,6 +306,7 @@ export async function deepClassifyTender(input: DeepInput): Promise<DeepResult> 
       org: input.organisation,
       source: input.source_label,
       pageText: page.markdown,
+      searchContext: input.search_context,
     },
     docs,
   );
@@ -375,6 +380,7 @@ export async function deepClassifyTenderDebug(
       org: input.organisation,
       source: input.source_label,
       pageText: page.markdown,
+      searchContext: input.search_context,
     },
     docs.map((d) => ({ filename: d.filename, mime: d.mime, base64: d.base64 })),
   );

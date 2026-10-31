@@ -4,6 +4,7 @@
 import { scrapeAllSources } from "./tenders.server";
 import { classifyTenders } from "./ai-classifier.server";
 import { createServerSupabaseClient, getServerRuntimeEnv } from "./runtime-env.server";
+import { normalizeKeywordSets } from "./keyword-sets";
 
 function getServerClient() {
   const supabaseUrl = getServerRuntimeEnv("SUPABASE_URL");
@@ -83,7 +84,7 @@ export async function runTenderCheck(): Promise<RunResult> {
   const sb = getServerClient();
   const { data: settings, error: sErr } = await sb
     .from("settings")
-    .select("notify_email, ai_min_confidence, ai_include_maybe, keywords, exclude_keywords, match_mode")
+    .select("notify_email, ai_min_confidence, ai_include_maybe, keywords, exclude_keywords, match_mode, keyword_sets")
     .eq("id", 1)
     .single();
   if (sErr) throw new Error(sErr.message);
@@ -98,64 +99,29 @@ export async function runTenderCheck(): Promise<RunResult> {
     (settings as { ai_include_maybe?: boolean } | null)?.ai_include_maybe ?? false,
   );
 
-  // Use the saved keyword rules before AI processing so the deep-document
-  // audit is spent on likely mattress/bedding opportunities, not every tender.
   const settingsRow = settings as {
     keywords?: string[] | null;
     exclude_keywords?: string[] | null;
     match_mode?: string | null;
+    keyword_sets?: unknown;
   };
-  const defaultKeywords = [
-    "mattress", "mattresses", "mattress supply", "mattress set", "foam mattress",
-    "PU foam mattress", "polyurethane foam mattress", "memory foam mattress",
-    "rebonded foam mattress", "latex mattress", "coir mattress", "rubberised coir",
-    "rubberized coir", "spring mattress", "bonnell spring mattress", "pocket spring mattress",
-    "hospital mattress", "medical mattress", "patient mattress", "orthopaedic mattress",
-    "orthopedic mattress", "ICU mattress", "pressure relief mattress", "pressure-relief mattress",
-    "anti-decubitus mattress", "air mattress", "water mattress", "folding mattress",
-    "portable mattress", "camping mattress", "hostel mattress", "cot mattress",
-    "mattress cover", "mattress protector", "mattress topper", "mattress pad",
-    "bed", "beds", "hospital bed", "patient bed", "ward bed", "ICU bed",
-    "bunk bed", "cot", "cots", "bed frame", "bed base", "bedstead", "bed roll",
-    "bedroll", "sleeping mattress", "sleeping mat", "sleeping pad", "sleeping bag",
-    "pillow", "pillows", "pillow cover", "pillow case", "pillowcase", "bolster",
-    "bedding", "bed linen", "bedsheet", "bed sheet", "blanket", "blankets",
-    "comforter", "quilt", "quilts", "duvet", "bedspread", "hospital linen", "linen",
-    "foam sheet", "PU foam", "coir mattress", "rubberised coir mattress",
-    "bed sheets", "bed sheet supply", "bedsheet sets", "bed linen supply",
-    "bed linen sets", "bedclothes", "bed cover", "bed covers", "pillow covers",
-    "pillowcase sets", "cushion", "cushions", "mattress foam", "rubber foam",
-    "HR foam", "high resilience foam", "air mattress for medical use",
-    "medical air mattress", "anti bedsore mattress", "alternating pressure mattress",
-    "pressure mattress", "patient transfer mattress", "surgical mattress",
-    "ICU bed with mattress", "hospital bed with mattress", "medical bed with mattress",
-    "cotton mattress", "cotton bed", "cotton bedsheet", "cotton bed sheet",
-    "linen items", "linen supplies", "hospital bedding", "hostel bedding",
-    "dormitory supplies", "sleeping equipment", "ward furniture",
-    "bedside locker", "bedside cabinet",
-  ];
-  // Always retain the built-in mattress/bedding vocabulary and add the
-  // administrator's custom terms. This makes expanded discovery effective
-  // immediately, even before a database migration has been applied.
-  const savedKeywords = Array.isArray(settingsRow.keywords)
-    ? settingsRow.keywords.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
-    : [];
-  const keywords = [...new Map(
-    [...defaultKeywords, ...savedKeywords].map((term) => [term.trim().toLowerCase(), term.trim()]),
-  ).values()];
-  const excludeKeywords = Array.isArray(settingsRow.exclude_keywords)
-    ? settingsRow.exclude_keywords.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
-    : [];
-  // Discovery is deliberately recall-first: the built-in vocabulary and
-  // custom terms are OR-matched so an old "all words" preference cannot
-  // accidentally require dozens of unrelated terms to appear in one row.
-  // Ignore legacy strict/phrase modes during ingestion. Candidate discovery
-  // must stay broad; the AI and BOQ audit perform relevance filtering later.
-  const matchMode = "any" as const;
+  const keywordSets = normalizeKeywordSets(settingsRow.keyword_sets, settingsRow.keywords, settingsRow.exclude_keywords, settingsRow.match_mode);
+  const enabledSets = keywordSets.filter((set) => set.enabled && set.include_keywords.length > 0);
+  if (!enabledSets.length) {
+    const message = "No enabled keyword sets. Enable at least one set in Settings before starting a scan.";
+    await sb.from("settings").update({
+      last_run_at: new Date().toISOString(),
+      last_run_status: "error",
+      last_run_message: message,
+    }).eq("id", 1);
+    return { ok: false, new_count: 0, total_matches: 0, sources: [], message };
+  }
+  const keywords = [...new Set(enabledSets.flatMap((set) => set.include_keywords))];
   const { results } = await scrapeAllSources({
     include: keywords,
-    exclude: excludeKeywords,
-    mode: matchMode,
+    exclude: [],
+    mode: "any",
+    sets: enabledSets,
   }, () => scanStopRequested(sb));
   if (await scanStopRequested(sb)) return finishStoppedScan(sb);
 
@@ -250,6 +216,7 @@ export async function runTenderCheck(): Promise<RunResult> {
         freshRows.map((r) => ({
           id: r.fingerprint,
           source_label: r.source_label,
+          search_context: r.matched_set_contexts ?? [],
           text: `${r.title}\n${r.organisation ?? ""}\n${r.raw_excerpt}`,
         })),
       );
@@ -272,6 +239,7 @@ export async function runTenderCheck(): Promise<RunResult> {
     closing_at: string | null;
     tender_url: string | null;
     matched_keywords: string[];
+    matched_keyword_sets: string[];
   }> = [];
 
   // Deep BOQ audit runs on EVERY scraped tender, regardless of stage-1 title
@@ -359,6 +327,7 @@ export async function runTenderCheck(): Promise<RunResult> {
           organisation: c.organisation ?? null,
           source_label: c.source_label,
           tender_url: c.tender_url,
+          search_context: c.matched_set_contexts ?? [],
         });
       } catch (e) {
         const reason = e instanceof Error ? e.message : String(e);
@@ -417,7 +386,8 @@ export async function runTenderCheck(): Promise<RunResult> {
         published_at: m.published_at ?? null,
         closing_at: d.closing_at ?? m.closing_at ?? null,
         tender_url: m.tender_url ?? null,
-        matched_keywords: d.category ? [d.category] : m.matched_keywords,
+        matched_keywords: m.matched_keywords,
+        matched_keyword_sets: m.matched_keyword_sets ?? [],
         raw_excerpt: m.raw_excerpt,
         ai_verdict: d.verdict,
         ai_reason: d.reason,
@@ -450,7 +420,8 @@ export async function runTenderCheck(): Promise<RunResult> {
           published_at: m.published_at ?? null,
           closing_at: m.closing_at ?? null,
           tender_url: m.tender_url ?? null,
-          matched_keywords: d.category ? [d.category] : m.matched_keywords,
+          matched_keywords: m.matched_keywords,
+          matched_keyword_sets: m.matched_keyword_sets ?? [],
         });
       }
     }

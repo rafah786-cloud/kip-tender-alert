@@ -1,11 +1,12 @@
-// Server-only: uses Lovable AI Gateway to classify tender rows as mattress-supply tenders.
-// No keyword pre-filter — the model decides.
+// Server-only: uses the Lovable AI Gateway to classify a tender against matched search-set scopes.
 import { getServerRuntimeEnv } from "./runtime-env.server";
+import type { KeywordSetMatchContext } from "./keyword-sets";
 
 export interface ClassifyInput {
   id: string; // stable id from caller (e.g. fingerprint)
   text: string; // raw row / title / excerpt
   source_label?: string;
+  search_context?: KeywordSetMatchContext[];
 }
 
 export interface ClassifyVerdict {
@@ -16,13 +17,15 @@ export interface ClassifyVerdict {
   category?: string;
 }
 
-const SYSTEM_PROMPT = `You classify Indian government tender listings.
-Task: decide whether each tender is for SUPPLY of mattresses or directly related bedding products (coir mattress, foam mattress, spring mattress, hospital mattress, mattress cover, pillow, bedsheet packaged with mattress, bed-roll / bedding kit for jawans/students/patients, etc.).
+const SYSTEM_PROMPT = `You classify Indian government tender listings against the matched search categories provided for each item.
+Each item includes its matched search sets, matching terms, and a set-specific AI scope. Evaluate that scope.
 
 Rules:
-- "yes" = clearly a supply tender for mattresses or bedding products.
-- "maybe" = mentions beds/bedding ambiguously, or could include mattresses as part of a larger furniture/hostel/hospital supply package — worth a human look.
-- "no" = unrelated (hospital beds as furniture only, spring water, software, civil works, vehicles, etc.).
+- "yes" = the actual tender scope clearly fits at least one matched search set.
+- "maybe" = the title/listing is relevant but the actual scope needs BOQ review or remains ambiguous.
+- "no" = the tender does not fit any matched search set.
+- Do not assume all sets are about mattresses. Construction / PWD and future categories use their own scope.
+- Do not require one tender to match every search set.
 Return concise reasons (<= 20 words). Confidence 0-1.`;
 
 interface RawItem {
@@ -48,6 +51,7 @@ export async function classifyTenders(
     const userPayload = batch.map((b) => ({
       id: b.id,
       source: b.source_label ?? "",
+      search_sets: b.search_context ?? [],
       text: b.text.slice(0, 1200),
     }));
 

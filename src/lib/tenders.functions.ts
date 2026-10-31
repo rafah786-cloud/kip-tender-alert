@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import type { KeywordSet } from "./keyword-sets";
 
 // Sensitive single-user settings and tender records are only available to the administrator.
 async function requireAdminAccess(): Promise<void> {
@@ -26,6 +27,7 @@ export interface TenderRow {
   stage1_verdict: string | null;
   docs_checked: number | null;
   doc_excerpt: string | null;
+  matched_keyword_sets?: string[];
 
 
 }
@@ -43,6 +45,7 @@ export interface Settings {
   email_suppressed: boolean;
   ai_min_confidence: number;
   ai_include_maybe: boolean;
+  keyword_sets: KeywordSet[];
 }
 
 
@@ -77,6 +80,7 @@ export const getSettings = createServerFn({ method: "GET" }).handler(async () =>
     keywords: (data.keywords as string[]) ?? [],
     exclude_keywords: (data.exclude_keywords as string[]) ?? [],
     match_mode: mode,
+    keyword_sets: (await import("./keyword-sets")).normalizeKeywordSets(data.keyword_sets, data.keywords, data.exclude_keywords, data.match_mode),
     last_run_at: data.last_run_at as string | null,
     last_run_status: data.last_run_status as string | null,
     last_run_message: data.last_run_message as string | null,
@@ -119,6 +123,24 @@ export const updateMatchSettings = createServerFn({ method: "POST" })
     const { error } = await sb.from("settings").update(patch).eq("id", 1);
     if (error) throw new Error(error.message);
     return { ok: true };
+  });
+
+export const updateKeywordSets = createServerFn({ method: "POST" })
+  .validator((d: { keyword_sets: KeywordSet[] }) => d)
+  .handler(async ({ data }) => {
+    await requireAdminAccess();
+    const { sanitizeKeywordSets } = await import("./keyword-sets");
+    const keywordSets = sanitizeKeywordSets(data.keyword_sets);
+    const primary = keywordSets.find((set) => set.enabled && set.include_keywords.length > 0);
+    const sb = await getServerClient();
+    const { error } = await sb.from("settings").update({
+      keyword_sets: keywordSets,
+      keywords: primary?.include_keywords ?? [],
+      exclude_keywords: primary?.exclude_keywords ?? [],
+      match_mode: primary?.match_mode ?? "any",
+    }).eq("id", 1);
+    if (error) throw new Error(error.message);
+    return { ok: true, keyword_sets: keywordSets };
   });
 
 export const updateAiSettings = createServerFn({ method: "POST" })

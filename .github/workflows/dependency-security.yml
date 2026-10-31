@@ -1,4 +1,4 @@
-name: Dependency security refresh and build
+name: Tender Finder Pro CI
 
 on:
   push:
@@ -8,76 +8,56 @@ on:
       - "bun.lock"
       - "src/**"
       - "tests/**"
+      - "supabase/migrations/**"
       - "vite.config.ts"
       - "tsconfig.json"
       - ".github/workflows/dependency-security.yml"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: tender-watch-dependency-build
-  cancel-in-progress: false
+  group: tender-finder-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
+  validate:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - name: Resolve dependencies and refresh Bun lockfile
-        run: bun install
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
 
-      - name: Apply available security fixes within declared version ranges
-        run: bun audit fix
-        continue-on-error: true
-
-      - name: Verify the lockfile after security fixes
-        run: bun install
-
-      - name: Commit refreshed dependency manifests
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json bun.lock
-          if ! git diff --cached --quiet; then
-            git commit -m "chore(deps): refresh Bun lockfile"
-            git push origin HEAD:main
-          else
-            echo "bun.lock is already up to date"
-          fi
-
-      - name: Audit remaining dependency advisories
+      - name: Audit dependencies (advisory)
         run: bun audit --json
         continue-on-error: true
 
-      - name: Lint source (currently advisory; repository-wide Prettier baseline is not clean)
+      - name: Lint source (advisory until the legacy repository formatting baseline is cleaned)
         run: bun run lint
         continue-on-error: true
 
-      - name: Tender discovery regression tests
-        run: bun test tests/tender-discovery.test.ts
+      - name: Tender discovery and keyword-set regression tests
+        run: bun test tests/*.test.ts
 
       - name: Build production bundle
         run: bun run build
+
       - name: Smoke-test Vite development and browser rendering
         shell: bash
         run: |
           set -euo pipefail
           npm install --no-save --package-lock=false playwright
           npx playwright install --with-deps chromium
-
           bun run dev -- --host 127.0.0.1 --port 5173 > /tmp/vite-dev.log 2>&1 &
           server_pid=$!
           cleanup() {
@@ -85,13 +65,10 @@ jobs:
             wait "$server_pid" 2>/dev/null || true
           }
           trap cleanup EXIT
-
           status=""
           for attempt in $(seq 1 60); do
             status="$(curl -sS -o /tmp/vite-home.html -w '%{http_code}' http://127.0.0.1:5173/ || true)"
-            if [ "$status" = "200" ]; then
-              break
-            fi
+            if [ "$status" = "200" ]; then break; fi
             if ! kill -0 "$server_pid" 2>/dev/null; then
               echo "Vite dev server exited before the homepage responded."
               cat /tmp/vite-dev.log
@@ -99,16 +76,13 @@ jobs:
             fi
             sleep 1
           done
-
           if [ "$status" != "200" ]; then
             echo "Vite dev homepage returned HTTP $status."
             cat /tmp/vite-dev.log
             exit 1
           fi
-
           node <<'NODE'
           const { chromium } = require("playwright");
-
           (async () => {
             const browser = await chromium.launch({ headless: true });
             try {
@@ -118,39 +92,17 @@ jobs:
               page.on("console", (message) => {
                 if (message.type() === "error") pageErrors.push(message.text());
               });
-
-              const response = await page.goto("http://127.0.0.1:5173/", {
-                waitUntil: "networkidle",
-                timeout: 45000,
-              });
+              const response = await page.goto("http://127.0.0.1:5173/", { waitUntil: "networkidle", timeout: 45000 });
               await page.waitForTimeout(1500);
-
               const body = await page.locator("body").innerText();
-              console.log("Homepage HTTP status:", response?.status());
-              console.log("Rendered page text:", body.slice(0, 1200));
-
-              if (!response || response.status() !== 200) {
-                throw new Error("Homepage did not return HTTP 200 in Chromium.");
-              }
-              if (body.includes("This page didn't load")) {
-                throw new Error("React rendered the root error boundary instead of the administrator screen.");
-              }
-              if (!/Tender Watch|Administrator access|Secure Tender Watch/i.test(body)) {
-                throw new Error("Expected Tender Watch administrator screen was not rendered.");
-              }
-              if (pageErrors.length) {
-                console.error("Browser errors:", pageErrors.join("\n\n"));
-                throw new Error("Browser reported runtime errors during initial render.");
-              }
-              console.log("Browser smoke test passed: Tender Watch administrator screen rendered.");
+              if (!response || response.status() !== 200) throw new Error("Homepage did not return HTTP 200.");
+              if (body.includes("This page didn't load")) throw new Error("Root error boundary rendered.");
+              if (!/Tender Watch|Administrator access|Secure Tender Watch/i.test(body)) throw new Error("Tender Watch administrator screen was not rendered.");
+              if (pageErrors.length) throw new Error("Browser runtime errors: " + pageErrors.join("\n\n"));
+              console.log("Browser smoke test passed.");
             } finally {
               await browser.close();
             }
-          })().catch((error) => {
-            console.error(error);
-            process.exitCode = 1;
-          });
+          })().catch((error) => { console.error(error); process.exitCode = 1; });
           NODE
-
-          echo "Vite server output:"
           cat /tmp/vite-dev.log
