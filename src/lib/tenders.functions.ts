@@ -95,7 +95,7 @@ function cleanList(arr: string[]): string[] {
         .map((k) => k.trim())
         .filter((k) => k.length > 0 && k.length <= 80),
     ),
-  ).slice(0, 50);
+  ).slice(0, 200);
 }
 
 export const updateMatchSettings = createServerFn({ method: "POST" })
