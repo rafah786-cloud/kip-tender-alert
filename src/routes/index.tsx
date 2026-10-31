@@ -302,6 +302,24 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
       q.state.data?.last_run_status === "running" || q.state.data?.last_run_status === "stopping" ? 4_000 : 30_000,
     refetchIntervalInBackground: true,
   });
+  // Check the deployed server's real runtime binding, not only historical scan
+  // text. This endpoint is admin-session protected and never returns secret values.
+  const firecrawlRuntimeQ = useQuery({
+    queryKey: ["firecrawlRuntime"],
+    queryFn: async () => {
+      const response = await fetch("/api/public/debug/runtime-env", {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error(`Runtime diagnostics failed (${response.status})`);
+      return response.json() as Promise<{
+        firecrawl?: { configured?: boolean; source?: string };
+      }>;
+    },
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+    retry: 1,
+  });
   const scanStatus = settingsQ.data?.last_run_status;
   // Do not hide Stop Scan just because a long-running scan exceeded the stale-lock window.
   const isRunning = scanStatus === "running" || scanStatus === "stopping";
@@ -314,14 +332,19 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
   const sourceHealth = sourceHealthQ.data ?? [];
   const sourceErrorCount = sourceHealth.filter((s) => s.last_status === "error").length;
   const sourceHealthyCount = sourceHealth.filter((s) => s.last_status === "ok").length;
+  const sourceErrorsText = [
+    settingsQ.data?.last_run_message ?? "",
+    ...sourceHealth.map((source) => source.last_error ?? ""),
+  ].join("\n");
+  const firecrawlKeyConfigured = firecrawlRuntimeQ.data?.firecrawl?.configured;
+  const firecrawlAuthOrQuotaIssue =
+    /Firecrawl authentication failed|Firecrawl credits\/quota exhausted/i.test(sourceErrorsText);
   const firecrawlConfigIssue =
-    /FIRECRAWL_API_KEY|Firecrawl authentication failed|Firecrawl credits\/quota exhausted/i.test(
-      settingsQ.data?.last_run_message ?? "",
-    ) || sourceHealth.some((source) => /FIRECRAWL_API_KEY|Firecrawl authentication failed|Firecrawl credits\/quota exhausted/i.test(source.last_error ?? ""));
+    firecrawlAuthOrQuotaIssue ||
+    firecrawlKeyConfigured === false ||
+    (firecrawlKeyConfigured !== true && /FIRECRAWL_API_KEY (?:is not available|is missing)/i.test(sourceErrorsText));
   const firecrawlRateLimitIssue =
-    /Firecrawl rate limit persisted|Firecrawl rate limit reached/i.test(
-      settingsQ.data?.last_run_message ?? "",
-    ) || sourceHealth.some((source) => /Firecrawl rate limit persisted|Firecrawl rate limit reached/i.test(source.last_error ?? ""));
+    /Firecrawl rate limit persisted|Firecrawl rate limit reached/i.test(sourceErrorsText);
 
   const tendersQ = useQuery({
     queryKey: ["tenders"],
@@ -642,13 +665,16 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
             <div className="flex items-start gap-3">
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
               <div>
-                <p className="font-semibold">Firecrawl is not available to the running app</p>
+                <p className="font-semibold">Firecrawl credentials need attention</p>
                 <p className="mt-1 leading-6">
-                  The scanner cannot fetch tender pages until the deployed server can read <code className="rounded bg-amber-100 px-1 py-0.5">FIRECRAWL_API_KEY</code>.
-                  The secret already listed in Lovable must be applied to this app build: sync the latest changes from GitHub, then publish the updated version. Do not paste the secret into code or chat.
+                  {firecrawlKeyConfigured === false
+                    ? <>The deployed server cannot currently read <code className="rounded bg-amber-100 px-1 py-0.5">FIRECRAWL_API_KEY</code>. Check the existing Lovable project secret and republish after it is available. Do not paste the key into code or chat.</>
+                    : /Firecrawl authentication failed/i.test(sourceErrorsText)
+                      ? "Firecrawl rejected the configured API key. Check that the key is active in your Firecrawl account, then update the existing Lovable secret if it was rotated."
+                      : "Firecrawl reports that the account quota is exhausted. Check the Firecrawl account's credit balance before the next scan."}
                 </p>
-                {settingsQ.data?.last_run_message && /FIRECRAWL_API_KEY|Firecrawl/i.test(settingsQ.data.last_run_message) && (
-                  <p className="mt-2 break-words text-xs text-amber-900/90">Latest diagnostic: {settingsQ.data.last_run_message}</p>
+                {firecrawlRuntimeQ.isError && firecrawlKeyConfigured === undefined && (
+                  <p className="mt-2 text-xs text-amber-900/90">Live runtime configuration could not be checked. The warning will update after the protected diagnostic endpoint responds.</p>
                 )}
               </div>
             </div>
