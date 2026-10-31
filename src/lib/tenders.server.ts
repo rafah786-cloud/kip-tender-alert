@@ -616,15 +616,41 @@ async function scrapeSourcesWithBatch(
   shouldStop?: () => Promise<boolean>,
 ): Promise<Map<string, ScrapeOk | ScrapeErr>> {
   const key = getServerRuntimeEnv("FIRECRAWL_API_KEY");
-  if (!key) {
-    const direct = await mapWithConcurrency(sources, 2, async (source) => ({
-      url: canonicalScrapeUrl(source.url),
-      result: await directFetchFallback(source.url),
-    }));
-    return new Map(direct.map((item) => [item.url, item.result]));
-  }
-
   const uniqueUrls = [...new Set(sources.map((source) => canonicalScrapeUrl(source.url)))];
+
+  // Prefer a bounded, no-credit HTML fetch. Firecrawl is the recovery path for
+  // portals that block direct requests, require browser rendering, or expose
+  // a page shell without a parseable tender listing.
+  const directItems = await mapWithConcurrency(sources, 10, async (source) => {
+    if (shouldStop && await shouldStop()) {
+      return { url: canonicalScrapeUrl(source.url), result: { ok: false as const, error: "Scan stopped by administrator." } };
+    }
+    const url = canonicalScrapeUrl(source.url);
+    const fetched = await directFetchFallback(source.url);
+    if (!fetched.ok) return { url, result: fetched, needsBrowser: true };
+    const challenge = isPortalChallengePage(fetched.markdown);
+    const explicitEmpty = /no (?:active )?(?:tenders|bids|records|results) found|no records available|no data available/i.test(fetched.markdown);
+    const parsedRows = parseListing(source, fetched.markdown);
+    const publicTenderRows = parsedRows.some((row) =>
+      Boolean(row.published_at || row.closing_at)
+      || /(?:tender id|bid number|bid no\\.?|tender reference number)/i.test(row.raw_excerpt),
+    );
+    if (challenge || (!publicTenderRows && !explicitEmpty)) {
+      return {
+        url,
+        result: { ok: false as const, error: challenge ?? "Direct HTML loaded but no public tender rows could be parsed." },
+        needsBrowser: true,
+      };
+    }
+    return { url, result: fetched, needsBrowser: false };
+  });
+
+  const baseResults = new Map<string, ScrapeOk | ScrapeErr>();
+  for (const item of directItems) baseResults.set(item.url, item.result);
+  const pendingUrls = [...new Set(directItems.filter((item) => item.needsBrowser).map((item) => item.url))];
+  if (pendingUrls.length === 0) return baseResults;
+  if (!key) return baseResults;
+
   const authHeaders = {
     "Content-Type": "application/json",
     Authorization: "Bearer " + key,
@@ -635,13 +661,13 @@ async function scrapeSourcesWithBatch(
 
   for (let attempt = 0; attempt < 3; attempt++) {
     if (shouldStop && await shouldStop()) {
-      return new Map(uniqueUrls.map((url) => [url, { ok: false as const, error: "Scan stopped by administrator." }]));
+      return new Map([...baseResults, ...pendingUrls.map((url) => [url, { ok: false as const, error: "Scan stopped by administrator." }] as const)]);
     }
     startResponse = await fetch(batchUrl, {
       method: "POST",
       headers: authHeaders,
       body: JSON.stringify({
-        urls: uniqueUrls,
+        urls: pendingUrls,
         ignoreInvalidURLs: true,
         formats: [{ type: "markdown" }],
         onlyMainContent: true,
@@ -666,13 +692,13 @@ async function scrapeSourcesWithBatch(
         : status === 429
           ? "Firecrawl batch start was rate-limited after retries (429)."
           : "Firecrawl batch start failed (" + status + "): " + detail;
-    return new Map(uniqueUrls.map((url) => [url, { ok: false as const, error: reason }]));
+    return new Map([...baseResults, ...pendingUrls.map((url) => [url, { ok: false as const, error: reason }] as const)]);
   }
 
   const batchId = typeof startJson.id === "string" ? startJson.id : "";
   if (!batchId) {
     const reason = "Firecrawl batch response did not include a job id: " + String(startJson.error ?? "unknown response").slice(0, 200);
-    return new Map(uniqueUrls.map((url) => [url, { ok: false as const, error: reason }]));
+    return new Map([...baseResults, ...pendingUrls.map((url) => [url, { ok: false as const, error: reason }] as const)]);
   }
 
   const statusUrl = "https://api.firecrawl.dev/v2/batch/scrape/" + encodeURIComponent(batchId);
@@ -683,7 +709,7 @@ async function scrapeSourcesWithBatch(
   while (Date.now() < deadline) {
     if (shouldStop && await shouldStop()) {
       await fetch(statusUrl, { method: "DELETE", headers: { Authorization: "Bearer " + key }, signal: AbortSignal.timeout(10_000) }).catch(() => undefined);
-      return new Map(uniqueUrls.map((url) => [url, { ok: false as const, error: "Scan stopped by administrator." }]));
+      return new Map([...baseResults, ...pendingUrls.map((url) => [url, { ok: false as const, error: "Scan stopped by administrator." }] as const)]);
     }
 
     const response = await fetch(statusUrl, {
@@ -733,14 +759,14 @@ async function scrapeSourcesWithBatch(
 
   const byUrl = new Map<string, FirecrawlBatchItem>();
   items.forEach((item, index) => {
-    const rawUrl = item.metadata?.sourceURL ?? item.metadata?.url ?? item.url ?? uniqueUrls[index];
+    const rawUrl = item.metadata?.sourceURL ?? item.metadata?.url ?? item.url ?? pendingUrls[index];
     if (rawUrl) byUrl.set(canonicalScrapeUrl(rawUrl), item);
   });
 
-  const results = new Map<string, ScrapeOk | ScrapeErr>();
+  const results = new Map<string, ScrapeOk | ScrapeErr>(baseResults);
   const fallbackCandidates: string[] = [];
 
-  for (const url of uniqueUrls) {
+  for (const url of pendingUrls) {
     const item = byUrl.get(url);
     const markdown = typeof item?.markdown === "string" ? item.markdown : "";
     if (markdown.trim().length > 0) {
