@@ -172,6 +172,7 @@ async function directFetchFallback(url: string): Promise<ScrapeOk | ScrapeErr> {
     }
     return { ok: true, markdown };
   } catch (error) {
+    if (stopPoll) clearInterval(stopPoll);
     const reason = error instanceof Error ? error.message : String(error);
     return { ok: false, error: `Direct HTML fallback failed: ${reason.slice(0, 240)}` };
   } finally {
@@ -271,6 +272,7 @@ async function firecrawlScrape(url: string, shouldStop?: () => Promise<boolean>)
       await new Promise((resolve) => setTimeout(resolve, backoffMs));
     }
 
+    if (stopPoll) clearInterval(stopPoll);
     if (!res) return { ok: false, error: "Firecrawl request was not started." };
 
     if (!res.ok) {
