@@ -40,7 +40,7 @@ describe("Tender Finder discovery regression tests", () => {
       "| Tender Title | Reference No | Closing Date | Bid Opening Date |",
       "| --- | --- | --- | --- |",
       "| [Supply of 50 Coir Mattresses](https://procurement.example.gov.in/tender/456) | REF-456 | 02 Nov 2099 06:00 PM | 03 Nov 2099 10:00 AM |",
-    ].join("\\n");
+    ].join("\n");
     const spacedRows = parseListing(source, spacedMonth, { include: ["coir mattress"], exclude: [], mode: "any" });
     expect(spacedRows[0]?.closing_at).toBe("02 Nov 2099 06:00 PM");
   });
