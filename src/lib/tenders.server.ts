@@ -226,28 +226,52 @@ async function firecrawlScrape(url: string, shouldStop?: () => Promise<boolean>)
         void shouldStop().then((stop) => { if (stop) controller.abort("Tender scan stopped by administrator"); }).catch(() => undefined);
       }, 750);
     }
-    const res = await fetch(FIRECRAWL_SCRAPE_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${fcKey}`,
-      },
-      body: JSON.stringify({
-        url,
-        formats: ["markdown"],
-        onlyMainContent: true,
-        waitFor: 2500,
-      }),
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(45_000)]),
-    }).finally(() => { if (stopPoll) clearInterval(stopPoll); });
-
-    const responseText = await res.text().catch(() => "");
+    let res: Response | undefined;
     let json: unknown = null;
-    try {
-      json = responseText ? JSON.parse(responseText) : null;
-    } catch {
-      json = { message: responseText.slice(0, 200) };
+    let responseText = "";
+
+    // Firecrawl may return 429 during bursts. Respect Retry-After and use
+    // bounded exponential backoff instead of immediately hammering the API
+    // or making a slow direct request for every throttled portal.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (shouldStop && await shouldStop()) {
+        return { ok: false, error: "Scan stopped by administrator." };
+      }
+      res = await fetch(FIRECRAWL_SCRAPE_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${fcKey}`,
+        },
+        body: JSON.stringify({
+          url,
+          formats: ["markdown"],
+          onlyMainContent: true,
+          waitFor: 2500,
+        }),
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(45_000)]),
+      });
+      responseText = await res.text().catch(() => "");
+      try {
+        json = responseText ? JSON.parse(responseText) : null;
+      } catch {
+        json = { message: responseText.slice(0, 200) };
+      }
+
+      if (res.status !== 429 && res.status < 500) break;
+      if (attempt === 2) break;
+
+      const retryAfter = res.headers.get("retry-after");
+      const retryAfterSeconds = retryAfter
+        ? (Number.isFinite(Number(retryAfter))
+            ? Number(retryAfter)
+            : Math.max(0, (Date.parse(retryAfter) - Date.now()) / 1000))
+        : 0;
+      const backoffMs = Math.min(30_000, Math.max(retryAfterSeconds * 1000, 2_000 * (2 ** attempt)));
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
     }
+
+    if (!res) return { ok: false, error: "Firecrawl request was not started." };
 
     if (!res.ok) {
       const firecrawlError =
@@ -256,16 +280,19 @@ async function firecrawlScrape(url: string, shouldStop?: () => Promise<boolean>)
           : res.status === 402
             ? "Firecrawl credits/quota exhausted (402)."
             : res.status === 429
-              ? "Firecrawl rate limit reached (429)."
+              ? "Firecrawl rate limit persisted after 3 attempts (429)."
               : `Firecrawl request failed (${res.status}): ${JSON.stringify(json).slice(0, 240)}`;
 
-      // A 429 affects this source only. Do not set a process-wide cooldown:
-      // doing so made every queued portal bypass Firecrawl for the next minute.
-      // Keep scanning when Firecrawl is throttled or the key/quota is unavailable.
-      // Direct HTML fetch is best-effort; preserve the Firecrawl error when it fails.
+      // Do not bypass Firecrawl with a direct request on auth, quota, or
+      // rate-limit responses. Those are provider/account issues, not portal
+      // failures; a direct fallback here only creates misleading timeouts.
+      if (res.status === 401 || res.status === 403 || res.status === 402 || res.status === 429) {
+        return { ok: false, error: firecrawlError };
+      }
+
+      // Direct HTML fallback is reserved for provider/server failures.
       const fallback = await directFetchFallback(url);
       if (fallback.ok && fallback.markdown.length > 0) return fallback;
-
       return {
         ok: false,
         error: `${firecrawlError} Direct fallback: ${fallback.error ?? "no page content"}`,
@@ -497,7 +524,9 @@ export async function scrapeAllSources(
 ): Promise<{
   results: { source: TenderSource; matches: ParsedTender[]; error?: string }[];
 }> {
-  const raw = await mapWithConcurrency([...new Map(TENDER_SOURCES.map((source) => [source.key, source])).values()], 2, async (source) => {
+  // A single in-flight request avoids bursting the shared Firecrawl plan
+  // when a full scan covers dozens of government portal pages.
+  const raw = await mapWithConcurrency([...new Map(TENDER_SOURCES.map((source) => [source.key, source])).values()], 1, async (source) => {
     if (shouldStop && await shouldStop()) {
       return { source, matches: [] as ParsedTender[], error: "Scan stopped by administrator." };
     }
