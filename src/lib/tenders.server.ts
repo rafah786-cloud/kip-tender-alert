@@ -138,6 +138,9 @@ export function htmlToTenderMarkdown(html: string): string {
   return html
     .replace(/<!--[\s\S]*?-->/g, " ")
     .replace(/<(script|style|noscript)[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    // Collapse indentation/newlines between adjacent table tags. Procurement
+    // portals commonly put every <td> on a separate HTML source line.
+    .replace(/>\s+</g, "><")
     .replace(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gis, " [$2]($1) ")
     .replace(/<tr\b[^>]*>/gi, "\n| ")
     .replace(/<\/(td|th)>/gi, " | ")
