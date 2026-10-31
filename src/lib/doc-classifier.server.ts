@@ -61,6 +61,7 @@ async function firecrawl(url: string): Promise<FirecrawlOk | FirecrawlErr> {
       body: JSON.stringify({
         url,
         formats: ["markdown", "links"],
+        parsers: ["pdf"],
         onlyMainContent: true,
         waitFor: 2500,
       }),
@@ -168,7 +169,7 @@ async function geminiDeepClassify(
       type: "text",
       text:
         `TENDER:\n  Title: ${ctx.title}\n  Org: ${ctx.org ?? "?"}\n  Portal: ${ctx.source}\n\n` +
-        `DETAIL PAGE (markdown, truncated):\n${ctx.pageText.slice(0, 4000)}\n\n` +
+        `DETAIL PAGE (markdown, truncated):\n${ctx.pageText.slice(0, 12000)}\n\n` +
         `Documents attached: ${docs.length}. Read them and decide.`,
     },
   ];
@@ -266,7 +267,18 @@ export async function deepClassifyTender(input: DeepInput): Promise<DeepResult> 
   }
 
   // 2. Find document links (BOQ / tender notice / contract).
-  const docUrls = pickDocLinks(page.markdown, page.links);
+  const discoveredDocUrls = pickDocLinks(page.markdown, page.links);
+  let directTenderDocument: string[] = [];
+  try {
+    const detailUrl = new URL(input.tender_url);
+    if (/showbidDocument|documentdownload/i.test(detailUrl.pathname)) {
+      directTenderDocument = [detailUrl.href];
+    }
+  } catch {
+    // Ignore malformed tender URLs; the detail-page fetch has already failed
+    // safely if the URL is not valid.
+  }
+  const docUrls = [...new Set([...directTenderDocument, ...discoveredDocUrls])].slice(0, 3);
 
   // 3. Download what we can.
   const docs: { filename: string; mime: string; base64: string }[] = [];
@@ -332,7 +344,18 @@ export async function deepClassifyTenderDebug(
     };
   }
 
-  const docUrls = pickDocLinks(page.markdown, page.links);
+  const discoveredDocUrls = pickDocLinks(page.markdown, page.links);
+  let directTenderDocument: string[] = [];
+  try {
+    const detailUrl = new URL(input.tender_url);
+    if (/showbidDocument|documentdownload/i.test(detailUrl.pathname)) {
+      directTenderDocument = [detailUrl.href];
+    }
+  } catch {
+    // Ignore malformed tender URLs; the detail-page fetch has already failed
+    // safely if the URL is not valid.
+  }
+  const docUrls = [...new Set([...directTenderDocument, ...discoveredDocUrls])].slice(0, 3);
   const docs: { filename: string; mime: string; base64: string; size: number }[] = [];
   for (const u of docUrls) {
     const d = await downloadDoc(u);
