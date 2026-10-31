@@ -468,6 +468,19 @@ export function parseListing(
   }
   if (buf.length) rows.push(buf.join(" "));
 
+  // Keep the public listing header semantics so a Bid Opening Date is never
+  // confused with the Bid Submission Closing Date.
+  const tableHeaderLine = lines.find((line) =>
+    line.startsWith("|")
+    && /tender title|title/i.test(line)
+    && /(closing date|bid end date|submission end)/i.test(line),
+  );
+  const tableHeaders = tableHeaderLine
+    ? tableHeaderLine.split("|").map((cell) => cell.trim().toLowerCase()).filter(Boolean)
+    : [];
+  const publishedHeaderIndex = tableHeaders.findIndex((cell) => /published date|publish date/i.test(cell));
+  const closingHeaderIndex = tableHeaders.findIndex((cell) => /closing date|bid end date|submission end/i.test(cell));
+
   const out: ParsedTender[] = [];
   const seen = new Set<string>();
 
@@ -506,8 +519,15 @@ export function parseListing(
     if (cells && cells.length >= 2) {
       const dateRe = /\d{1,2}[-/](?:\d{1,2}|[A-Za-z]{3,9})[-/]\d{2,4}/;
       const dates = cells.filter((c) => dateRe.test(c));
-      published_at = dates[0];
-      closing_at = dates[1];
+      if (closingHeaderIndex >= 0 && dateRe.test(cells[closingHeaderIndex] ?? "")) {
+        closing_at = cells[closingHeaderIndex];
+        published_at = publishedHeaderIndex >= 0 && dateRe.test(cells[publishedHeaderIndex] ?? "")
+          ? cells[publishedHeaderIndex]
+          : undefined;
+      } else {
+        published_at = dates[0];
+        closing_at = dates.length >= 3 ? dates[1] : dates.length >= 2 ? dates[1] : dates[0];
+      }
       const linkCell = cells.find((c) => /\[[^\]]+\]\(/.test(c));
       const longestCell = [...cells].sort((a, b) => b.length - a.length)[0];
       const t = linkCell ?? longestCell;
