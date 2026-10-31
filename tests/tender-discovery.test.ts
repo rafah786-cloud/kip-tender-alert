@@ -59,7 +59,6 @@ describe("Tender Finder discovery regression tests", () => {
       </table>`;
     const markdown = htmlToTenderMarkdown(html);
     const rows = parseListing(source, markdown, { include: ["mattress"], exclude: [], mode: "any" });
-    console.log("HTML CONVERSION DIAGNOSTIC", JSON.stringify({ markdown, rows }));
     expect(rows).toHaveLength(1);
     expect(rows[0]?.title).toContain("Supply of 25 Foam Mattresses");
     expect(rows[0]?.closing_at).toBe("02-Nov-2099 06:00 PM");
