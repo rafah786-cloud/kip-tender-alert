@@ -802,6 +802,9 @@ function isOfficialProcurementHost(hostname: string): boolean {
     || host === "gov.in"
     || host.endsWith(".nic.in")
     || host === "nic.in"
+    || host.endsWith(".edu.in")
+    || host.endsWith(".ac.in")
+    || host === "aiims.edu"
     || host.endsWith(".nprocure.com");
 }
 
@@ -900,6 +903,9 @@ async function searchOfficialTenderIndex(
     const searchable = (title + "\n" + description).slice(0, 5000);
     const matched = findKeywordMatches(searchable.toLowerCase(), opts);
     if (matched.length === 0) continue;
+    const tenderEvidence = /tender|bid|procurement|bid end date|tender id|bid number/i.test(searchable);
+    const tenderDocumentPath = /showbidDocument|bidding\/bid|\/tenders?\/|tenderStore|attachments\/tenderfile|nicgep\/app|eprocure\/app/i.test(url.pathname);
+    if (!tenderEvidence && !tenderDocumentPath) continue;
 
     const host = url.hostname.toLowerCase();
     let group = byHost.get(host);
