@@ -839,8 +839,11 @@ function extractDateNearLabel(text: string, labels: string[]): string | undefine
   for (const label of labels) {
     const index = text.toLowerCase().indexOf(label.toLowerCase());
     if (index < 0) continue;
-    const match = text.slice(index, index + 180).match(/(\d{1,2})[-/]([A-Za-z]{3,9}|\d{1,2})[-/](\d{4})(?:\s+(\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?))?/i);
-    if (match) return match[1] + "-" + match[2] + "-" + match[3] + (match[4] ? " " + match[4].trim() : "");
+    const excerpt = text.slice(index, index + 180);
+    const human = excerpt.match(/(\d{1,2})[-/\s]+([A-Za-z]{3,9}|\d{1,2})[-/\s]+(\d{4})(?:\s+(\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?))?/i);
+    if (human) return human[1] + "-" + human[2] + "-" + human[3] + (human[4] ? " " + human[4].trim() : "");
+    const iso = excerpt.match(/\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b/);
+    if (iso) return iso[3] + "-" + iso[2] + "-" + iso[1];
   }
   return undefined;
 }
