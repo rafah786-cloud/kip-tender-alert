@@ -251,12 +251,22 @@ function Dashboard() {
     }
   };
 
-  const signOut = async () => {
+  const signOut = async (): Promise<boolean> => {
     try {
-      await fetch("/api/admin/session", { method: "DELETE" });
-    } finally {
+      const response = await fetch("/api/admin/session", {
+        method: "DELETE",
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.error ?? "The server could not confirm logout.");
       setGateStatus({ configured: true, authenticated: false });
       setAccessToken("");
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Administrator logout failed.");
+      // Keep the administrator UI open until the server revokes the session.
+      return false;
     }
   };
 
@@ -343,7 +353,7 @@ function Dashboard() {
   return <TenderDashboard onLogout={signOut} />;
 }
 
-function TenderDashboard({ onLogout }: { onLogout: () => void }) {
+function TenderDashboard({ onLogout }: { onLogout: () => Promise<boolean> }) {
   const qc = useQueryClient();
   const router = useRouter();
   const getSettingsFn = useServerFn(getSettings);
@@ -597,7 +607,10 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
             variant="ghost"
             aria-label="Sign out"
             title="Sign out"
-            onClick={onLogout}
+            onClick={async () => {
+              const revoked = await onLogout();
+              if (revoked) qc.clear();
+            }}
           >
             <LogOut className="h-4 w-4" />
           </Button>
