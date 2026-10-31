@@ -136,12 +136,12 @@ interface ScrapeErr {
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
 export function htmlToTenderMarkdown(html: string): string {
   return html
-    .replace(/<!--[\\s\\S]*?-->/g, " ")
-    .replace(/<(script|style|noscript)[^>]*>[\\s\\S]*?<\\/\\1>/gi, " ")
-    .replace(/<a\\s+[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\\/a>/gis, " [$2]($1) ")
-    .replace(/<tr\\b[^>]*>/gi, "\\n| ")
-    .replace(/<\\/(td|th)>/gi, " | ")
-    .replace(/<\\/(tr|p)>|<br\\s*\\/?>/gi, "\\n")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<(script|style|noscript)[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gis, " [$2]($1) ")
+    .replace(/<tr\b[^>]*>/gi, "\n| ")
+    .replace(/<\/(td|th)>/gi, " | ")
+    .replace(/<\/(tr|p)>|<br\s*\/?>/gi, "\n")
     .replace(/<[^>]+>/g, "")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
@@ -149,8 +149,8 @@ export function htmlToTenderMarkdown(html: string): string {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/[ \\t]+/g, " ")
-    .replace(/\\n\\s*\\n+/g, "\\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n\s*\n+/g, "\n")
     .trim();
 }
 
