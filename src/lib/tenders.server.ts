@@ -882,7 +882,18 @@ async function searchOfficialTenderIndex(
     return [{ source: searchSource, matches: [], error: "Scan stopped by administrator." }];
   }
 
-  const query = '(mattress OR mattresses OR "bed mattress" OR "hospital mattress" OR "ICU mattress" OR "coir mattress" OR "foam mattress" OR "air mattress" OR "bed sheets" OR bedsheets OR pillow OR pillows OR bedding OR "hospital bed") (tender OR bid OR procurement OR "Bid End Date") India government GeM';
+  // Search one focused official-domain segment per scheduler slot. This
+  // spreads indexed discovery across GeM, central NIC feeds, state/PSU sites
+  // and government institutions without consuming the whole monthly search
+  // allowance on every two-hour scan.
+  const querySegments = [
+    'site:bidplus.gem.gov.in (mattress OR mattresses OR "bed mattress" OR "hospital mattress" OR "ICU mattress" OR "coir mattress" OR "foam mattress" OR "air mattress" OR "bed sheets" OR bedsheets OR pillow OR bedding) (bid OR tender)',
+    '(site:eprocure.gov.in OR site:etenders.gov.in OR site:etenders.kerala.gov.in) (mattress OR "bed sheet" OR bedsheet OR pillow OR bedding OR "hospital bed") (tender OR procurement)',
+    '(site:gov.in OR site:nic.in OR site:edu.in OR site:ac.in) (mattress OR "bed sheets" OR bedsheets OR pillow OR bedding OR "ICU bed") (tender OR "Bid End Date") India',
+    '(site:gov.in OR site:nic.in OR site:nprocure.com) ("coir mattress" OR "rubberised coir" OR "foam mattress" OR "air mattress" OR "hospital linen" OR "linen supplies") (tender OR bid) India',
+  ];
+  const searchSlot = Math.floor(Date.now() / (2 * 60 * 60 * 1000));
+  const query = querySegments[searchSlot % querySegments.length];
   let response: Response;
   try {
     response = await fetch("https://api.firecrawl.dev/v2/search", {
@@ -895,7 +906,8 @@ async function searchOfficialTenderIndex(
         query,
         sources: ["web"],
         country: "IN",
-        limit: 25,
+        tbs: "qdr:y",
+        limit: 5,
       }),
       signal: AbortSignal.timeout(30_000),
     });
