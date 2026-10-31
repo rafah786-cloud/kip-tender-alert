@@ -984,6 +984,11 @@ function TenderDashboard({ onLogout }: { onLogout: () => void }) {
                           {k}
                         </Badge>
                       ))}
+                      {(t.matched_keyword_sets ?? []).map((setName) => (
+                        <Badge key={`set-${setName}`} className="text-[10px]" variant="secondary">
+                          {setName}
+                        </Badge>
+                      ))}
                     </div>
                     <h3 className="text-base font-semibold leading-snug tracking-tight sm:text-[17px]">{t.title}</h3>
                     {t.organisation && (
@@ -1148,7 +1153,11 @@ function SettingsPanel({
   const [savingAi, setSavingAi] = useState(false);
   useEffect(() => {
     setSets(keywordSets);
-    if (!keywordSets.some((set) => set.id === selectedSetId)) setSelectedSetId(keywordSets[0]?.id ?? "mattress");
+  }, [keywordSets]);
+  useEffect(() => {
+    if (!keywordSets.some((set) => set.id === selectedSetId)) {
+      setSelectedSetId(keywordSets[0]?.id ?? "mattress");
+    }
   }, [keywordSets, selectedSetId]);
   useEffect(() => setEmailDraft(notifyEmail ?? ""), [notifyEmail]);
   useEffect(() => setMinConf(aiMinConfidence), [aiMinConfidence]);
