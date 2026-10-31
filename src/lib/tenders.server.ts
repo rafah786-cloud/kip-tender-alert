@@ -396,7 +396,7 @@ function termForms(term: string): string[] {
   return [...forms].filter(Boolean);
 }
 
-function termHits(text: string, term: string, mode: MatchMode): boolean {
+export function termHits(text: string, term: string, mode: MatchMode): boolean {
   const variants = termForms(term);
   if (variants.length === 0) return false;
   if (mode === "phrase") return variants.some((variant) => text.includes(variant));
@@ -438,7 +438,7 @@ function findKeywordMatches(text: string, opts: MatchOptions): string[] {
  * pipe-separated lines. We split into chunks (paragraphs / table rows) and
  * keep anything mentioning a configured keyword.
  */
-function parseListing(
+export function parseListing(
   source: TenderSource,
   markdown: string,
   opts?: MatchOptions,
@@ -833,7 +833,7 @@ function isOfficialProcurementHost(hostname: string): boolean {
     || host.endsWith(".nprocure.com");
 }
 
-function extractDateNearLabel(text: string, labels: string[]): string | undefined {
+export function extractDateNearLabel(text: string, labels: string[]): string | undefined {
   for (const label of labels) {
     const index = text.toLowerCase().indexOf(label.toLowerCase());
     if (index < 0) continue;
@@ -986,7 +986,7 @@ function hasExplicitEmptyTenderResult(markdown: string): boolean {
   return /no (?:active )?(?:tenders|bids|records|results) found|no records available|no data available|no active tenders available/i.test(markdown);
 }
 
-function hasPublicTenderRows(source: TenderSource, markdown: string): boolean {
+export function hasPublicTenderRows(source: TenderSource, markdown: string): boolean {
   if (hasExplicitEmptyTenderResult(markdown)) return true;
   const parsed = parseListing(source, markdown);
   if (parsed.some((row) => Boolean(row.published_at || row.closing_at))) return true;
@@ -999,7 +999,7 @@ function hasPublicTenderRows(source: TenderSource, markdown: string): boolean {
   const tenderLinks = links.filter((match) => /tender|bid|notice|supply|procure|purchase/i.test(match[1]));
   return /tender title|bid number|tender reference number/i.test(markdown) && tenderLinks.length > 0;
 }
-function isPortalChallengePage(markdown: string): string | null {
+export function isPortalChallengePage(markdown: string): string | null {
   const lower = markdown.toLowerCase();
   if (lower.includes("provide captcha and click on search button to list all active tenders")
     || (lower.includes("enter captcha") && lower.includes("active tenders") && lower.includes("tender title"))) {
